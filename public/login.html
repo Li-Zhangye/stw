@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 - 短信转网页</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/icon.png">
+  <script src="/js/i18n.js" defer></script>
+  <script src="/js/theme.js" defer></script>
+</head>
+<body>
+  <div class="container" style="position:relative;">
+    <div class="project-logo"><img src="/icon.png" alt=""></div>
+    <select id="langSwitcher" style="position:absolute;top:12px;right:12px;font-size:11px;padding:2px 4px;border-radius:4px;border:1px solid var(--theme-border,#e0e0e0);background:var(--theme-bg-card,#fff);color:var(--theme-text,#333);cursor:pointer;" onchange="switchLang(this.value)"></select>
+    <h1>登录</h1>
+    <p class="subtitle">请输入您的账号信息</p>
+
+    <div id="message" class="message"></div>
+
+    <form id="loginForm" autocomplete="off">
+      <div class="form-group">
+        <label for="phone">手机号</label>
+        <input type="tel" id="phone" name="phone" placeholder="请输入11位手机号" maxlength="11" autocomplete="username">
+      </div>
+
+      <div class="form-group">
+        <label for="password">密码</label>
+        <input type="password" id="password" name="password" placeholder="请输入密码" autocomplete="current-password">
+      </div>
+
+      <div id="dynamicCodeArea" class="dynamic-code-area">
+        <label>动态验证码 <span style="color:#e74c3c;font-size:12px;">（必填）</span></label>
+        <p style="font-size:13px;color:#888;margin-bottom:8px;">密码错误已达3次，请输入动态验证码。请查看您已登录设备上【设置】中的动态验证码，每10秒自动更换</p>
+        <div class="form-group">
+          <input type="text" id="dynamicCode" name="dynamicCode" placeholder="输入已登录设备上的动态验证码" maxlength="6" inputmode="numeric" pattern="\d{6}" autocomplete="off">
+        </div>
+      </div>
+
+      <div id="emailCodeArea" class="email-code-area">
+        <label>邮箱验证码</label>
+        <p style="font-size:13px;color:#888;margin-bottom:10px;">已向您的邮箱发送验证码，有效期2分钟</p>
+        <div class="form-group">
+          <input type="text" id="emailCode" name="emailCode" placeholder="请输入邮箱收到的6位验证码" maxlength="6" inputmode="numeric" pattern="\d{6}" autocomplete="off">
+        </div>
+        <button type="button" class="btn btn-secondary" id="sendEmailCodeBtn" style="margin-bottom:10px;">重新发送验证码</button>
+        <button type="button" class="btn btn-secondary" id="changePwdBtn" style="margin-bottom:10px;display:none;">立即更改密码</button>
+      </div>
+
+      <button type="submit" class="btn" id="loginBtn" data-original-text="登录">登录</button>
+    </form>
+
+    <div class="links">
+      没有账号？<a href="/register.html">去注册</a>
+      <span style="margin:0 8px">|</span>
+      <a href="/forgot-password.html">忘记密码？</a>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script>
+    function switchLang(code) {
+      i18n.setLang(code);
+      i18n.applyLangToPage();
+      var sel = document.getElementById('langSwitcher');
+      if (sel) sel.value = code;
+    }
+    function initLangSwitcher() {
+      var sel = document.getElementById('langSwitcher');
+      if (!sel) return;
+      var langs = i18n.getLanguages();
+      var current = i18n.getLang();
+      sel.innerHTML = '';
+      langs.forEach(function(l) {
+        var opt = document.createElement('option');
+        opt.value = l.code;
+        opt.textContent = l.name;
+        if (l.code === current) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+    var savedLang = i18n.getLang();
+    if (savedLang && savedLang !== 'zh') {
+      i18n.setLang(savedLang);
+    }
+    i18n.applyLangToPage();
+    initLangSwitcher();
+
+    let messageEl = document.getElementById('message');
+    let form = document.getElementById('loginForm');
+    let loginBtn = document.getElementById('loginBtn');
+    let phoneInput = document.getElementById('phone');
+    let passwordInput = document.getElementById('password');
+    let dynamicCodeInput = document.getElementById('dynamicCode');
+    let dynamicCodeArea = document.getElementById('dynamicCodeArea');
+    let emailCodeArea = document.getElementById('emailCodeArea');
+    let emailCodeInput = document.getElementById('emailCode');
+    let sendEmailCodeBtn = document.getElementById('sendEmailCodeBtn');
+
+    let emailCodeSent = false;
+    let changePwdBtn = document.getElementById('changePwdBtn');
+    let currentPhone = '';
+
+    let isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    if (isMobile) {
+      document.querySelector('.subtitle').textContent = '手机端登录';
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      doLogin();
+    });
+
+    function doLogin() {
+      hideMessage(messageEl);
+
+      let phone = phoneInput.value.trim();
+      let password = passwordInput.value;
+      let dynamicCode = dynamicCodeInput.value.trim();
+      let emailCode = emailCodeInput.value.trim();
+
+      if (!phone) {
+        showMessage(messageEl, 'error', '请输入手机号');
+        phoneInput.focus();
+        return;
+      }
+      currentPhone = phone;
+
+      if (emailCodeArea.classList.contains('show')) {
+        if (!emailCode) {
+          showMessage(messageEl, 'error', '请输入邮箱验证码');
+          emailCodeInput.focus();
+          return;
+        }
+        doEmailCodeLogin(phone, emailCode);
+        return;
+      }
+
+      if (!password) {
+        showMessage(messageEl, 'error', '请输入密码');
+        passwordInput.focus();
+        return;
+      }
+
+      setLoading(loginBtn, true);
+
+      let postData = {
+        phone: phone,
+        password: password
+      };
+
+      if (dynamicCodeArea.classList.contains('show')) {
+        if (!dynamicCode) {
+          showMessage(messageEl, 'error', '请输入动态验证码');
+          dynamicCodeInput.focus();
+          setLoading(loginBtn, false);
+          return;
+        }
+        postData.dynamicCode = dynamicCode;
+      }
+
+      apiPost('/api/auth/login', postData, function (result) {
+        setLoading(loginBtn, false);
+        showMessage(messageEl, 'success', '登录成功');
+        dynamicCodeArea.classList.remove('show');
+        emailCodeArea.classList.remove('show');
+        setTimeout(function () {
+          window.location.href = '/';
+        }, 1000);
+      }, function (result) {
+        setLoading(loginBtn, false);
+
+        if (result.needDynamicCode) {
+          showMessage(messageEl, 'error', result.message || '密码错误已达3次，请输入动态验证码');
+          dynamicCodeArea.classList.add('show');
+          dynamicCodeInput.focus();
+        } else if (result.needEmailCode) {
+          showMessage(messageEl, 'error', result.message || '验证失败次数过多');
+          emailCodeArea.classList.add('show');
+          emailCodeSent = true;
+          emailCodeInput.focus();
+          if (result.showChangePwdTip) {
+            changePwdBtn.style.display = 'block';
+          }
+        } else {
+          showMessage(messageEl, 'error', result.message || '登录失败');
+        }
+      });
+    }
+
+    function doEmailCodeLogin(phone, emailCode) {
+      hideMessage(messageEl);
+      setLoading(loginBtn, true);
+
+      apiPost('/api/auth/login/verify-email-code', {
+        phone: phone,
+        emailCode: emailCode
+      }, function (result) {
+        setLoading(loginBtn, false);
+        showMessage(messageEl, 'success', '登录成功');
+        setTimeout(function () {
+          let url = '/';
+          if (result.showChangePwdTip) url += '?pwdTip=1';
+          window.location.href = url;
+        }, 1000);
+      }, function (result) {
+        setLoading(loginBtn, false);
+        showMessage(messageEl, 'error', result.message || '验证失败');
+      });
+    }
+
+    function sendEmailCodeToServer(phone) {
+      apiPost('/api/auth/login/send-email-code', {
+        phone: phone
+      }, function (result) {
+        showMessage(messageEl, 'info', '验证码已发送');
+      }, function (result) {
+        showMessage(messageEl, 'error', result.message || '发送失败');
+      });
+    }
+
+    sendEmailCodeBtn.addEventListener('click', function () {
+      let phone = phoneInput.value.trim();
+      if (!phone) {
+        showMessage(messageEl, 'error', '请先输入手机号');
+        return;
+      }
+      sendEmailCodeToServer(phone);
+    });
+
+    changePwdBtn.addEventListener('click', function () {
+      let phone = phoneInput.value.trim();
+      if (phone) {
+        window.location.href = '/forgot-password.html?phone=' + encodeURIComponent(phone);
+      } else {
+        window.location.href = '/forgot-password.html';
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+      let savedPhone = localStorage.getItem('login_phone');
+      if (savedPhone) {
+        phoneInput.value = savedPhone;
+      }
+    });
+
+    phoneInput.addEventListener('input', function () {
+      this.value = this.value.replace(/\D/g, '');
+      localStorage.setItem('login_phone', this.value);
+    });
+  </script>
+</body>
+</html>

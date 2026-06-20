@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>短信转网页</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/icon.png">
+  <script src="/js/i18n.js" defer></script>
+  <script src="/js/theme.js" defer></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #f0f2f5; font-family: var(--theme-font); }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #fff; border-bottom: 1px solid #e0e0e0; position: sticky; top: 0; z-index: 100; }
+    .top-bar .title { font-size: 18px; font-weight: 700; color: var(--theme-color); display: flex; align-items: center; gap: 8px; }
+    .title-icon { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; }
+    .top-bar .btn-icon { background: none; border: none; font-size: 22px; cursor: pointer; padding: 6px 10px; border-radius: 6px; color: #555; }
+    .top-bar .btn-icon:hover { background: #f0f2f5; color: var(--theme-color); }
+    .top-bar .left, .top-bar .right { display: flex; align-items: center; gap: 4px; }
+
+    .sms-list { max-width: 680px; margin: 0 auto; padding: 8px 12px; }
+    .sms-card { background: #fff; border-radius: 10px; padding: 14px 16px 14px 40px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; border: 1px solid transparent; position: relative; }
+    .sms-card.unread { background: var(--theme-color-light); border-color: var(--theme-color-border); }
+    .sms-card.unread .sender { font-weight: 700; color: #1a1a1a; }
+    .sms-card.unread .content { font-weight: 500; color: #1a1a1a; }
+    .sms-card.read { background: #fff; border-color: #eee; }
+    .sms-card.read .sender { color: #555; }
+    .sms-card.read .content { color: #777; }
+    .sms-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .sms-card .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .sms-card .sender { font-size: 15px; }
+    .sms-card .time { font-size: 12px; color: #999; }
+    .sms-card .content { font-size: 14px; line-height: 1.5; word-break: break-word; }
+    .sms-card .unread-dot { width: 8px; height: 8px; background: var(--theme-color); border-radius: 50%; display: inline-block; margin-right: 6px; flex-shrink: 0; }
+    .sms-card.read .unread-dot { background: #ccc; }
+    .sms-card .sender-row { display: flex; align-items: center; }
+    .sms-card .copy-btn { position: absolute; top: 8px; right: 8px; background: #f0f2f5; border: none; border-radius: 6px; padding: 4px 8px; font-size: 12px; color: #666; cursor: pointer; display: none; z-index: 2; }
+    .sms-card .delete-btn { position: absolute; top: 8px; right: 52px; background: #fdecea; border: none; border-radius: 6px; padding: 4px 8px; font-size: 12px; color: #c0392b; cursor: pointer; display: none; z-index: 2; }
+    .sms-card:hover .copy-btn, .sms-card:hover .delete-btn { display: block; }
+    .sms-card .copy-btn:hover { background: #e0e0e0; color: var(--theme-color); }
+    .sms-card .delete-btn:hover { background: #f5c6cb; color: #a93226; }
+    .sms-card .select-checkbox { position: absolute; top: 12px; left: 12px; width: 18px; height: 18px; cursor: pointer; z-index: 2; }
+    .sms-card.selected { border-color: var(--theme-color); background: var(--theme-color-light); }
+    .sms-card { position: relative; padding-left: 40px; }
+
+    .empty-state { text-align: center; padding: 60px 20px; color: #999; }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state p { font-size: 15px; }
+
+    .unread-badge { background: var(--theme-color); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+    .mark-all-read-btn { font-size: 12px; padding: 4px 10px; border: 1px solid var(--theme-color); border-radius: 6px; background: #fff; color: var(--theme-color); cursor: pointer; flex-shrink: 0; margin-left: 8px; }
+    .mark-all-read-btn:hover { background: var(--theme-color-light); }
+
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 200; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.25s ease; }
+    .modal-overlay.show { display: flex; opacity: 1; }
+    .modal-overlay .modal { transform: scale(0.95); transition: transform 0.25s ease; }
+    .modal-overlay.show .modal { transform: scale(1); }
+    .modal { background: #fff; border-radius: 14px; padding: 24px; width: 90%; max-width: 380px; max-height: 80vh; overflow-y: auto; }
+    .modal h2 { font-size: 18px; margin-bottom: 16px; }
+    .modal .form-group { margin-bottom: 14px; }
+    .modal .form-group label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+    .modal .form-group input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; outline: none; }
+    .modal .form-group input:focus { border-color: var(--theme-color); }
+    .modal .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; margin-top: 6px; }
+    .modal .btn-primary { background: #1a73e8; color: #fff; }
+    .modal .btn-primary:hover { background: #1557b0; }
+    .modal .btn-secondary { background: #f0f2f5; color: #333; }
+    .modal .btn-secondary:hover { background: #e0e0e0; }
+    .modal .btn-danger { background: #e74c3c; color: #fff; }
+    .modal .modal-message { font-size: 13px; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; display: none; }
+    .modal .modal-message.error { display: block; background: #fdecea; color: #c0392b; }
+    .modal .modal-message.success { display: block; background: #e8f5e9; color: #27ae60; }
+    .modal .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+    .modal .info-row:last-child { border-bottom: none; }
+    .modal .info-label { color: #888; }
+    .modal .info-value { color: #333; font-weight: 500; }
+
+    .loading-spinner { text-align: center; padding: 30px; color: #999; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .sms-card { animation: fadeIn 0.2s ease; }
+
+    .search-bar { max-width: 680px; margin: 6px auto 0; padding: 0 12px; }
+    .search-bar input { width: 100%; padding: 10px 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 15px; outline: none; background: #fff; box-sizing: border-box; transition: border-color 0.2s; }
+    .search-bar input:focus { border-color: #1a73e8; }
+
+    .new-sms-toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: #1a73e8; color: #fff; padding: 8px 20px; border-radius: 20px; font-size: 13px; z-index: 150; display: none; cursor: pointer; box-shadow: 0 2px 12px rgba(26,115,232,0.3); }
+    .new-sms-toast.show { display: block; animation: fadeIn 0.3s ease; }
+
+    .not-login { text-align: center; padding: 80px 20px; }
+    .not-login h2 { font-size: 22px; color: #333; margin-bottom: 8px; }
+    .not-login p { color: #888; margin-bottom: 20px; }
+    .not-login .btn { display: inline-block; padding: 12px 40px; background: #1a73e8; color: #fff; text-decoration: none; border-radius: 8px; font-size: 16px; margin: 4px; }
+    .not-login .btn:hover { background: #1557b0; }
+    .not-login .btn-secondary { background: #f0f2f5; color: #333; }
+    .not-login .btn-secondary:hover { background: #e0e0e0; }
+
+    .tab-bar { display: flex; max-width: 680px; margin: 0 auto; padding: 8px 12px 0; }
+    .tab { flex: 1; padding: 10px; text-align: center; font-size: 14px; color: #666; cursor: pointer; border-bottom: 2px solid transparent; }
+    .tab.active { color: #1a73e8; border-bottom-color: #1a73e8; font-weight: 600; }
+
+    .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .status-dot.online { background: #34a853; box-shadow: 0 0 6px rgba(52,168,83,0.5); }
+    .status-dot.offline { background: #ccc; }
+    .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 10px 24px; border-radius: 8px; font-size: 14px; z-index: 300; display: none; }
+    .toast.show { display: block; animation: fadeIn 0.2s; }
+    .menu-item { display: block; width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; margin-top: 4px; background: #f5f5f5; color: #333; text-align: left; transform: translateX(0); opacity: 1; transition: transform 0.25s ease, opacity 0.25s ease; }
+    .menu-item:hover { background: #e8e8e8; }
+    .menu-item.slide-out { transform: translateX(30px); opacity: 0; }
+    .menu-item.slide-in { transform: translateX(0); opacity: 1; }
+    .menu-divider { height: 1px; background: #e0e0e0; margin: 8px 0; transition: opacity 0.2s ease; }
+    .menu-divider.slide-out { opacity: 0; }
+    .batch-bar { max-width: 680px; margin: 0 auto; padding: 8px 12px; display: flex; align-items: center; gap: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0; }
+    .batch-bar .batch-select-all { font-size: 14px; color: #333; cursor: pointer; display: flex; align-items: center; gap: 6px; user-select: none; }
+    .batch-bar .batch-count { font-size: 13px; color: #666; flex: 1; }
+    .batch-bar .btn-danger { background: #e74c3c; color: #fff; border: none; border-radius: 6px; padding: 6px 16px; font-size: 13px; cursor: pointer; }
+    .batch-bar .btn-danger:hover { background: #c0392b; }
+    .sms-card .select-checkbox { position: absolute; top: 10px; left: 10px; width: 18px; height: 18px; cursor: pointer; z-index: 2; }
+    .sms-card.selected { border-color: #1a73e8; background: #e8f0fe; }
+  </style>
+</head>
+<body>
+
+<div id="loginPrompt" class="not-login" style="display:none;">
+  <h2>短信转网页</h2>
+  <p>登录后即可查看手机接收到的短信</p>
+  <a href="/login.html" class="btn">去登录</a>
+  <a href="/register.html" class="btn btn-secondary">去注册</a>
+</div>
+
+<div id="app" style="display:none;">
+  <div class="top-bar">
+    <div class="left">
+      <button class="btn-icon" id="settingsBtn" title="设置">设置</button>
+    </div>
+    <div class="title">
+      <img src="/icon.png" class="title-icon" alt="">
+      <span id="statusDot" class="status-dot" style="display:none;"></span>
+      短信收件箱
+    </div>
+    <div class="right">
+      <select id="langSwitcher" style="font-size:11px;padding:2px 4px;border-radius:4px;border:1px solid var(--theme-border,#e0e0e0);background:var(--theme-bg-card,#fff);color:var(--theme-text,#333);margin-right:4px;cursor:pointer;" onchange="switchLang(this.value)"></select>
+      <button class="btn-icon" id="exportBtn" title="导出短信" onclick="exportSms()">导出</button>
+      <span id="unreadBadge" class="unread-badge" style="display:none;">0</span>
+    </div>
+  </div>
+
+  <div class="tab-bar">
+    <div class="tab active" data-tab="history">历史</div>
+    <div class="tab" data-tab="read">已读</div>
+    <div class="tab" data-tab="unread">未读</div>
+    <button class="mark-all-read-btn" id="markAllReadBtn" onclick="markAllRead()" style="display:none;" title="全部标为已读">全部已读</button>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="搜索短信内容或发件人..." oninput="onSearchInput()">
+  </div>
+
+  <div id="batchBar" class="batch-bar" style="display:none;">
+    <label class="batch-select-all" onclick="toggleSelectAll()">
+      <input type="checkbox" id="selectAllCheckbox"> 全选
+    </label>
+    <span id="batchCount" class="batch-count">已选 0 条</span>
+    <button class="btn btn-danger" id="batchDeleteBtn" onclick="deleteSelected()">删除选中</button>
+  </div>
+
+  <div class="new-sms-toast" id="newSmsToast" onclick="scrollToTop()">有新短信</div>
+
+  <div class="sms-list" id="smsList">
+    <div class="loading-spinner">加载中...</div>
+  </div>
+
+  <div id="emptyState" class="empty-state" style="display:none;">
+    <p>暂无短信</p>
+    <p style="font-size:13px;color:#bbb;">当手机收到新短信时会自动显示在这里</p>
+  </div>
+</div>
+
+<!-- 短信详情弹窗 -->
+<div class="modal-overlay" id="smsDetailModal">
+  <div class="modal" style="max-width:440px;">
+    <h2 id="detailSender" style="font-size:16px;margin-bottom:4px;"></h2>
+    <div id="detailTime" style="font-size:12px;color:#999;margin-bottom:12px;"></div>
+    <div id="detailContent" style="font-size:14px;color:#333;line-height:1.6;white-space:pre-wrap;word-break:break-all;background:#f5f5f5;padding:12px;border-radius:8px;max-height:300px;overflow-y:auto;"></div>
+    <div style="margin-top:16px;display:flex;gap:8px;">
+      <button class="btn btn-primary" style="flex:1;" onclick="copyDetailContent()">复制</button>
+      <button class="btn btn-secondary" style="flex:1;" onclick="closeDetailModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+    <!-- 设置弹窗 -->
+    <div class="modal-overlay" id="settingsModal">
+      <div class="modal">
+        <h2>设置</h2>
+        <div id="settingsMsg" class="modal-message"></div>
+
+        <div id="settingsMenu">
+          <div id="dynamicCodeInSettings" style="background:#e8f0fe;border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;display:none;">
+            <div style="font-size:12px;color:#666;margin-bottom:4px;">当前动态验证码（每10秒自动更换）</div>
+            <div id="dynamicCodeDisplay" style="font-size:32px;font-weight:700;color:#1a73e8;letter-spacing:6px;font-family:monospace;">------</div>
+            <div style="font-size:11px;color:#999;margin-top:4px;">用于在未登录设备上验证身份</div>
+          </div>
+
+          <button class="menu-item" id="menuAccountInfo">账号信息</button>
+          <div class="menu-divider"></div>
+          <button class="menu-item" id="menuChangePwd">修改密码</button>
+          <button class="menu-item" id="menuChangePwdByEmail">邮箱验证修改密码</button>
+          <div class="menu-divider"></div>
+          <button class="menu-item" id="menuSwitchUser">切换用户</button>
+          <button class="menu-item" id="menuChangeServer">更换服务器</button>
+          <button class="menu-item" id="menuLogout">退出登录</button>
+          <div class="menu-divider"></div>
+          <button class="menu-item" id="menuAbout">关于</button>
+          <button class="btn btn-danger" id="closeSettingsBtn" style="margin-top:12px;">关闭</button>
+        </div>
+
+        <div id="settingsAccountInfo" style="display:none;">
+          <h3>账号信息</h3>
+          <div id="accountInfoDetail" style="font-size:14px;color:#333;line-height:2;"></div>
+          <button class="btn btn-secondary" id="backFromAccountInfo" style="margin-top:12px;">返回</button>
+        </div>
+
+        <div id="settingsChangePwd" style="display:none;">
+          <h3>修改密码</h3>
+          <div class="form-group"><label>当前密码</label><input type="password" id="curPwd" placeholder="输入当前密码"></div>
+          <div class="form-group"><label>新密码</label><input type="password" id="newPwd" placeholder="包含数字、大小写字母、特殊符号，8-32位"></div>
+          <div class="form-group"><label>确认新密码</label><input type="password" id="confirmPwd" placeholder="再次输入新密码"></div>
+          <button class="btn btn-primary" id="changePwdBtn">确认修改</button>
+          <button class="btn btn-secondary" id="backToSettingsFromPwd" style="margin-top:8px;">返回</button>
+        </div>
+
+        <div id="settingsChangePwdByEmail" style="display:none;">
+          <h3>邮箱验证修改密码</h3>
+          <div id="changePwdEmailMsg" class="modal-message"></div>
+          <div id="changePwdEmailStep1">
+            <p style="font-size:13px;color:#888;margin-bottom:12px;">点击获取验证码，验证码将发送到您的QQ邮箱，有效期2分钟</p>
+            <button class="btn btn-primary" id="sendChangePwdEmailCodeBtn">发送验证码到邮箱</button>
+          </div>
+          <div id="changePwdEmailStep2" style="display:none;">
+            <div class="form-group"><label>邮箱验证码</label><input type="text" id="changePwdEmailCode" placeholder="输入6位验证码" maxlength="6"></div>
+            <div class="form-group"><label>新密码</label><input type="password" id="changePwdEmailNewPwd" placeholder="包含数字、大小写字母、特殊符号，8-32位"></div>
+            <div class="form-group"><label>确认新密码</label><input type="password" id="changePwdEmailConfirmPwd" placeholder="再次输入新密码"></div>
+            <button class="btn btn-primary" id="changePwdByEmailBtn">确认修改</button>
+          </div>
+          <button class="btn btn-secondary" id="backToSettingsFromPwdEmail" style="margin-top:8px;">返回</button>
+        </div>
+
+        <div id="settingsChangeServer" style="display:none;">
+          <h3>更换服务器</h3>
+          <p style="font-size:13px;color:#888;margin-bottom:12px;">在浏览器地址栏中输入新服务器地址即可。此处仅保存到本地记录。</p>
+          <div class="form-group"><label>新服务器地址</label><input type="text" id="newServerAddr" placeholder="例如: 192.168.1.100:3000"></div>
+          <button class="btn btn-primary" id="confirmChangeServer">保存并跳转</button>
+          <button class="btn btn-secondary" id="backToSettingsFromServer" style="margin-top:8px;">返回</button>
+        </div>
+
+        <div id="settingsAbout" style="display:none;">
+          <h3>关于</h3>
+          <p style="font-size:14px;color:#666;line-height:1.8;margin-bottom:12px;">
+            <strong>短信转网页 v1.0</strong><br>
+            将手机收到的短信实时转发到网页端。<br><br>
+            <strong>使用帮助：</strong><br>
+            • 历史 —— 查看所有短信记录<br>
+            • 已读 —— 查看已读短信<br>
+            • 未读 —— 查看未读短信<br>
+            • 点击短信可标记为已读
+          </p>
+          <button class="btn btn-secondary" id="backToSettingsFromAbout">返回</button>
+        </div>
+      </div>
+    </div>
+
+<!-- 离线清除弹窗 -->
+<div class="modal-overlay" id="offlineModal">
+  <div class="modal" style="border:2px solid #e74c3c;">
+    <h2 style="color:#e74c3c;">手机已离线</h2>
+    <div id="offlineMsg" class="modal-message" style="display:block;background:#fdecea;color:#c0392b;font-size:14px;padding:12px;border-radius:8px;margin-bottom:15px;">
+      服务器无法连接到您的手机。为防止隐私泄露，短信数据将在倒计时结束后自动清除。
+    </div>
+    <div style="text-align:center;margin-bottom:15px;">
+      <div style="font-size:13px;color:#888;margin-bottom:4px;">剩余时间</div>
+      <div id="offlineCountdown" style="font-size:36px;font-weight:700;color:#e74c3c;font-variant-numeric:tabular-nums;">--:--</div>
+    </div>
+    <div id="offlineInfo" style="font-size:13px;color:#888;margin-bottom:15px;text-align:center;">加载中...</div>
+    <button class="btn btn-primary" id="offlineDownloadBtn" onclick="doOfflineDownload()">立即导出并保存短信</button>
+    <button class="btn btn-secondary" id="offlineKeepBtn" style="margin-top:8px;display:none;" onclick="dismissOfflineModal()">我知道了，关闭</button>
+    <button class="btn btn-secondary" id="offlineDeleteNowBtn" style="margin-top:8px;display:none;" onclick="doOfflineCleanup()">立即清除（不再等待）</button>
+  </div>
+</div>
+
+<!-- 忘记密码提示弹窗 -->
+<div class="modal-overlay" id="forgotPwdModal">
+  <div class="modal" style="border:2px solid #f39c12;">
+    <h2 style="color:#f39c12;">您是否忘记了密码？</h2>
+    <p style="font-size:14px;color:#666;margin-bottom:15px;">您通过邮箱验证码登录成功。如果您忘记了密码，建议立即修改。</p>
+    <button class="btn btn-primary" onclick="dismissForgotPwd();document.getElementById('settingsBtn').click();document.getElementById('menuChangePwd').click();">使用原密码修改</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="dismissForgotPwd();document.getElementById('settingsBtn').click();document.getElementById('menuChangePwdByEmail').click();">使用邮箱验证码修改</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="dismissForgotPwd()">稍后再说</button>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script>
+function switchLang(code) {
+  i18n.setLang(code);
+  i18n.applyLangToPage();
+  // Update language switcher value
+  var sel = document.getElementById('langSwitcher');
+  if (sel) sel.value = code;
+}
+function initLangSwitcher() {
+  var sel = document.getElementById('langSwitcher');
+  if (!sel) return;
+  var langs = i18n.getLanguages();
+  var current = i18n.getLang();
+  sel.innerHTML = '';
+  langs.forEach(function(l) {
+    var opt = document.createElement('option');
+    opt.value = l.code;
+    opt.textContent = l.name;
+    if (l.code === current || (!current && l.code === 'zh')) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+// Apply saved language on page load
+var savedLang = i18n.getLang();
+if (savedLang && savedLang !== 'zh') {
+  i18n.setLang(savedLang);
+}
+i18n.applyLangToPage();
+initLangSwitcher();
+
+let isLoggedIn = false;
+let userId = null;
+let userPhone = '';
+let currentTab = 'history';
+let longPollActive = false;
+let lastMaxId = 0;
+let allSms = [];
+let searchQuery = '';
+let deviceOnline = false;
+let selectedIds = [];
+
+let toastEl = document.getElementById('toast');
+let smsListEl = document.getElementById('smsList');
+let emptyStateEl = document.getElementById('emptyState');
+let newSmsToastEl = document.getElementById('newSmsToast');
+
+function showToast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); setTimeout(function(){ toastEl.classList.remove('show'); }, 2500); }
+
+function onSearchInput() {
+  searchQuery = document.getElementById('searchInput').value.trim().toLowerCase();
+  renderSms();
+}
+
+function checkLogin() {
+  apiPost('/api/auth/user/info', {}, function(result) {
+    isLoggedIn = true;
+    if (!result.data) {
+      document.getElementById('loginPrompt').style.display = 'block';
+      document.getElementById('app').style.display = 'none';
+      return;
+    }
+    document.getElementById('loginPrompt').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    userPhone = result.data.phone || '';
+    checkDeviceStatus();
+    loadSms();
+  }, function(result) {
+    document.getElementById('loginPrompt').style.display = 'block';
+    document.getElementById('app').style.display = 'none';
+  });
+}
+
+function loadSms(callback) {
+  let url = '/api/sms/list?limit=200';
+  let sinceId = lastMaxId;
+  if (sinceId > 0) url += '&since_id=' + sinceId + '&wait=1';
+  let xhr = new XMLHttpRequest();
+  xhr.open('GET', url, true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState === 4) {
+      longPollActive = false;
+      if (xhr.status === 200) {
+        try {
+          let result = JSON.parse(xhr.responseText);
+          if (result.success) {
+            let hasNew = false;
+            if (result.sms && result.sms.length > 0) {
+              let existingIds = {};
+              for (let j = 0; j < allSms.length; j++) {
+                existingIds[allSms[j].id] = true;
+              }
+              for (let i = 0; i < result.sms.length; i++) {
+                let msg = result.sms[i];
+                if (msg.id > lastMaxId) lastMaxId = msg.id;
+                if (!existingIds[msg.id]) {
+                  if (sinceId > 0) {
+                    allSms.unshift(msg);
+                  } else {
+                    allSms.push(msg);
+                  }
+                  hasNew = true;
+                }
+              }
+            }
+            if (hasNew || !sinceId) {
+              renderSms();
+            }
+            updateUnreadBadge(result.unread);
+            if (callback) callback(true);
+            startLongPoll();
+            return;
+          }
+        } catch(e) {}
+      }
+      if (callback) callback(false);
+      startLongPoll();
+    }
+  };
+  longPollActive = true;
+  xhr.send();
+}
+
+function startLongPoll() {
+  if (longPollActive || !isLoggedIn) return;
+  let delay = lastMaxId > 0 ? 100 : 10000;
+  setTimeout(function() { if (isLoggedIn) loadSms(); }, delay);
+}
+
+function renderSms() {
+  let filtered;
+  if (currentTab === 'unread') filtered = allSms.filter(function(m){ return m.is_read === 0; });
+  else if (currentTab === 'read') filtered = allSms.filter(function(m){ return m.is_read === 1; });
+  else filtered = allSms;
+
+  if (searchQuery) {
+    filtered = filtered.filter(function(m) {
+      return (m.sender && m.sender.toLowerCase().indexOf(searchQuery) !== -1) ||
+             (m.content && m.content.toLowerCase().indexOf(searchQuery) !== -1);
+    });
+  }
+
+  if (filtered.length === 0) {
+    smsListEl.innerHTML = '';
+    emptyStateEl.style.display = 'block';
+    return;
+  }
+  emptyStateEl.style.display = 'none';
+  let html = '';
+  let selectedSet = {};
+  for (let si = 0; si < selectedIds.length; si++) selectedSet[selectedIds[si]] = true;
+  for (let i = 0; i < filtered.length; i++) {
+    let m = filtered[i];
+    let isUnread = m.is_read === 0;
+    let timeStr = m.received_at || m.created_at || '';
+    if (timeStr.length > 16) timeStr = timeStr.substring(0, 16);
+    let selected = selectedSet[m.id] ? ' selected' : '';
+    let safeId = escHtml(String(m.id));
+    html += '<div class="sms-card' + selected + ' ' + (isUnread ? 'unread' : 'read') + '" data-id="' + safeId + '" onclick="markRead(' + safeId + ')">';
+    html += '  <input type="checkbox" class="select-checkbox" onclick="event.stopPropagation();toggleSelect(' + safeId + ')"' + (selected ? ' checked' : '') + '>';
+    html += '  <button class="copy-btn" onclick="event.stopPropagation();copyCardSms(this)">复制</button>';
+    html += '  <button class="delete-btn" onclick="event.stopPropagation();deleteSingleSms(' + safeId + ')" title="删除">删除</button>';
+    html += '  <div class="header">';
+    html += '    <div class="sender-row"><span class="unread-dot"></span><span class="sender">' + escHtml(m.sender) + '</span></div>';
+    html += '    <span class="time">' + escHtml(timeStr) + '</span>';
+    html += '  </div>';
+    html += '  <div class="content">' + escHtml(m.content) + '</div>';
+    html += '</div>';
+  }
+  smsListEl.innerHTML = html;
+  updateBatchBar();
+}
+
+function scrollToTop() {
+  window.scrollTo({top: 0, behavior: 'smooth'});
+  newSmsToastEl.classList.remove('show');
+}
+
+function markRead(id) {
+  apiPost('/api/sms/mark-read', {ids: [id]}, function(result) {
+    for (let i = 0; i < allSms.length; i++) {
+      if (allSms[i].id === id) { allSms[i].is_read = 1; break; }
+    }
+    renderSms();
+    updateUnreadBadge();
+  }, function(result) {});
+  for (let i = 0; i < allSms.length; i++) {
+    if (allSms[i].id === id) {
+      showDetailModal(allSms[i]);
+      break;
+    }
+  }
+}
+
+function showDetailModal(msg) {
+  document.getElementById('detailSender').textContent = msg.sender || '未知';
+  let time = (msg.received_at || msg.created_at || '').substring(0, 19);
+  document.getElementById('detailTime').textContent = time;
+  document.getElementById('detailContent').textContent = msg.content || '';
+  document.getElementById('smsDetailModal').classList.add('show');
+}
+
+function closeDetailModal() {
+  document.getElementById('smsDetailModal').classList.remove('show');
+}
+
+let detailContentCache = '';
+function copyDetailContent() {
+  let text = document.getElementById('detailContent').textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    showToast('已复制');
+  }).catch(function() {
+    showToast('复制失败');
+  });
+}
+
+function deleteSingleSms(id) {
+  if (!confirm('确定删除此短信？')) return;
+  apiPost('/api/sms/delete', {ids: [id]}, function(result) {
+    showToast(result.message || '已删除');
+    allSms = allSms.filter(function(m){ return m.id !== id; });
+    selectedIds = selectedIds.filter(function(sid){ return sid !== id; });
+    renderSms();
+    updateUnreadBadge();
+  }, function(result) {
+    showToast(result.message || '删除失败');
+  });
+}
+
+function toggleSelect(id) {
+  let idx = selectedIds.indexOf(id);
+  if (idx === -1) selectedIds.push(id);
+  else selectedIds.splice(idx, 1);
+  renderSms();
+}
+
+function toggleSelectAll() {
+  let filtered = getFilteredSms();
+  let checked = document.getElementById('selectAllCheckbox').checked;
+  if (checked) {
+    for (let i = 0; i < filtered.length; i++) {
+      if (selectedIds.indexOf(filtered[i].id) === -1) selectedIds.push(filtered[i].id);
+    }
+  } else {
+    let idSet = {};
+    for (let i = 0; i < filtered.length; i++) idSet[filtered[i].id] = true;
+    selectedIds = selectedIds.filter(function(sid){ return !idSet[sid]; });
+  }
+  renderSms();
+}
+
+function getFilteredSms() {
+  let f;
+  if (currentTab === 'unread') f = allSms.filter(function(m){ return m.is_read === 0; });
+  else if (currentTab === 'read') f = allSms.filter(function(m){ return m.is_read === 1; });
+  else f = allSms;
+  if (searchQuery) {
+    f = f.filter(function(m) {
+      return (m.sender && m.sender.toLowerCase().indexOf(searchQuery) !== -1) ||
+             (m.content && m.content.toLowerCase().indexOf(searchQuery) !== -1);
+    });
+  }
+  return f;
+}
+
+function updateBatchBar() {
+  let bar = document.getElementById('batchBar');
+  let countEl = document.getElementById('batchCount');
+  if (selectedIds.length > 0) {
+    bar.style.display = 'flex';
+    countEl.textContent = '已选 ' + selectedIds.length + ' 条';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function deleteSelected() {
+  if (selectedIds.length === 0) return;
+  if (!confirm('确定删除选中的 ' + selectedIds.length + ' 条短信？此操作不可撤销。')) return;
+  apiPost('/api/sms/delete', {ids: selectedIds}, function(result) {
+    showToast(result.message || '已删除');
+    let idSet = {};
+    for (let i = 0; i < selectedIds.length; i++) idSet[selectedIds[i]] = true;
+    allSms = allSms.filter(function(m){ return !idSet[m.id]; });
+    selectedIds = [];
+    renderSms();
+    updateUnreadBadge();
+  }, function(result) {
+    showToast(result.message || '删除失败');
+  });
+}
+
+function updateUnreadBadge(count) {
+  if (count === undefined) {
+    count = 0;
+    for (let i = 0; i < allSms.length; i++) { if (allSms[i].is_read === 0) count++; }
+  }
+  let badge = document.getElementById('unreadBadge');
+  if (count > 0) { badge.textContent = count; badge.style.display = 'inline'; }
+  else { badge.style.display = 'none'; }
+  let markBtn = document.getElementById('markAllReadBtn');
+  markBtn.style.display = count > 0 ? 'inline' : 'none';
+}
+
+function markAllRead() {
+  let unreadIds = [];
+  for (let i = 0; i < allSms.length; i++) {
+    if (allSms[i].is_read === 0) unreadIds.push(allSms[i].id);
+  }
+  if (unreadIds.length === 0) return;
+  apiPost('/api/sms/mark-read', {ids: unreadIds}, function(result) {
+    showToast(result.message || '已全部标为已读');
+    for (let i = 0; i < allSms.length; i++) allSms[i].is_read = 1;
+    renderSms();
+    updateUnreadBadge(0);
+  }, function(result) {
+    showToast(result.message || '操作失败');
+  });
+}
+
+let offlineCountdownTimer = null;
+let offlineCountdownRemaining = 0;
+let offlineModalShown = false;
+
+function checkDeviceStatus() {
+  apiPost('/api/device/status', {}, function(result) {
+    let dot = document.getElementById('statusDot');
+    dot.style.display = 'inline-block';
+    let wasOnline = deviceOnline;
+    deviceOnline = result.online;
+    dot.className = 'status-dot ' + (result.online ? 'online' : 'offline');
+    dot.title = result.online ? '手机在线' : '手机离线';
+    if (!result.online && wasOnline) {
+      onDeviceOffline();
+    }
+    if (result.online && offlineModalShown) {
+      dismissOfflineModal();
+    }
+  }, function() {});
+  setTimeout(function() { if (isLoggedIn) checkDeviceStatus(); }, 15000);
+}
+
+function onDeviceOffline() {
+  if (offlineModalShown) return;
+  offlineModalShown = true;
+  let count = allSms.length;
+  let seconds;
+  if (count <= 10) seconds = 60;
+  else if (count <= 50) seconds = 120;
+  else if (count <= 200) seconds = 180;
+  else seconds = 300;
+  offlineCountdownRemaining = seconds;
+  document.getElementById('offlineInfo').textContent = '共 ' + count + ' 条短信，预计 ' + Math.ceil(seconds / 60) + ' 分钟后自动清除';
+  document.getElementById('offlineModal').classList.add('show');
+  document.getElementById('offlineKeepBtn').style.display = 'none';
+  document.getElementById('offlineDeleteNowBtn').style.display = 'none';
+  document.getElementById('offlineDownloadBtn').disabled = false;
+  updateOfflineCountdown();
+  if (offlineCountdownTimer) clearInterval(offlineCountdownTimer);
+  offlineCountdownTimer = setInterval(updateOfflineCountdown, 1000);
+}
+
+function updateOfflineCountdown() {
+  if (offlineCountdownRemaining <= 0) {
+    clearInterval(offlineCountdownTimer);
+    offlineCountdownTimer = null;
+    onOfflineCountdownExpired();
+    return;
+  }
+  let min = Math.floor(offlineCountdownRemaining / 60);
+  let sec = offlineCountdownRemaining % 60;
+  document.getElementById('offlineCountdown').textContent =
+    (min < 10 ? '0' : '') + min + ':' + (sec < 10 ? '0' : '') + sec;
+  offlineCountdownRemaining--;
+}
+
+function onOfflineCountdownExpired() {
+  document.getElementById('offlineCountdown').textContent = '00:00';
+  document.getElementById('offlineDownloadBtn').disabled = true;
+  apiPost('/api/sms/auto-cleanup', {}, function(result) {
+    if (result.never_exported) {
+      document.getElementById('offlineMsg').textContent = '您从未导出过短信。数据已保存在服务器数据库中，请注意隐私安全，服务器不承担信息泄露责任。';
+      document.getElementById('offlineMsg').style.background = '#fff3cd';
+      document.getElementById('offlineMsg').style.color = '#856404';
+      document.getElementById('offlineKeepBtn').style.display = 'block';
+      document.getElementById('offlineInfo').textContent = '短信未清除（共 ' + (result.deleted || 0) + ' 条）';
+    } else {
+      document.getElementById('offlineMsg').textContent = '已自动清除 ' + result.deleted + ' 条短信，保护您的隐私安全。';
+      document.getElementById('offlineMsg').style.background = '#d4edda';
+      document.getElementById('offlineMsg').style.color = '#155724';
+      document.getElementById('offlineKeepBtn').style.display = 'block';
+      document.getElementById('offlineInfo').textContent = '所有短信已从服务器删除';
+    }
+  }, function() {
+    document.getElementById('offlineMsg').textContent = '清除请求失败，请手动导出并联系管理员清除数据。';
+    document.getElementById('offlineMsg').style.background = '#f8d7da';
+    document.getElementById('offlineMsg').style.color = '#721c24';
+    document.getElementById('offlineKeepBtn').style.display = 'block';
+  });
+}
+
+function doOfflineDownload() {
+  document.getElementById('offlineDownloadBtn').disabled = true;
+  document.getElementById('offlineDownloadBtn').textContent = '导出中...';
+  let a = document.createElement('a');
+  a.href = '/api/sms/export';
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() {
+    document.body.removeChild(a);
+    dismissOfflineModal();
+  }, 500);
+  setTimeout(function() {
+    document.getElementById('offlineDownloadBtn').disabled = false;
+    document.getElementById('offlineDownloadBtn').textContent = '立即导出并保存短信';
+  }, 3000);
+}
+
+function doOfflineCleanup() {
+  if (!confirm('确定立即清除所有短信？此操作不可撤销！')) return;
+  clearInterval(offlineCountdownTimer);
+  offlineCountdownRemaining = 0;
+  onOfflineCountdownExpired();
+}
+
+function dismissOfflineModal() {
+  offlineModalShown = false;
+  document.getElementById('offlineModal').classList.remove('show');
+  if (offlineCountdownTimer) {
+    clearInterval(offlineCountdownTimer);
+    offlineCountdownTimer = null;
+  }
+}
+
+function exportSms() {
+  let a = document.createElement('a');
+  a.href = '/api/sms/export';
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() { document.body.removeChild(a); }, 500);
+}
+
+function copyCardSms(btn) {
+  let card = btn.parentNode;
+  let sender = card.querySelector('.sender').textContent;
+  let content = card.querySelector('.content').textContent;
+  copySms(sender, content);
+}
+
+function copySms(sender, content) {
+  let text = '[' + sender + '] ' + content;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      showToast('已复制到剪贴板');
+    }, function() {
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  let ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); showToast('已复制到剪贴板'); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+// 标签切换
+document.querySelectorAll('.tab').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+    this.classList.add('active');
+    currentTab = this.getAttribute('data-tab');
+    renderSms();
+  });
+});
+
+// 设置弹窗
+let dynamicCodeTimer = null;
+
+function animateMenuItems(dir) {
+  let items = document.querySelectorAll('#settingsMenu .menu-item, #settingsMenu .menu-divider');
+  let dynamicCode = document.getElementById('dynamicCodeInSettings');
+  let closeBtn = document.getElementById('closeSettingsBtn');
+  let all = [dynamicCode].concat(Array.from(items)).concat([closeBtn]).filter(Boolean);
+  if (dir === 'in') {
+    all.forEach(function(el, i) {
+      el.style.transitionDelay = (i * 40) + 'ms';
+      el.classList.remove('slide-out');
+      el.classList.add('slide-in');
+    });
+  } else {
+    all.forEach(function(el, i) {
+      el.style.transitionDelay = (i * 20) + 'ms';
+      el.classList.remove('slide-in');
+      el.classList.add('slide-out');
+    });
+  }
+}
+
+function resetMenuAnimations() {
+  let items = document.querySelectorAll('#settingsMenu .menu-item, #settingsMenu .menu-divider');
+  let dynamicCode = document.getElementById('dynamicCodeInSettings');
+  let closeBtn = document.getElementById('closeSettingsBtn');
+  let all = [dynamicCode].concat(Array.from(items)).concat([closeBtn]).filter(Boolean);
+  all.forEach(function(el) {
+    el.style.transitionDelay = '0ms';
+    el.classList.remove('slide-in', 'slide-out');
+  });
+}
+
+function showSettingsMenu() {
+  document.getElementById('settingsMenu').style.display = 'block';
+  document.getElementById('settingsAccountInfo').style.display = 'none';
+  document.getElementById('settingsChangePwd').style.display = 'none';
+  document.getElementById('settingsChangePwdByEmail').style.display = 'none';
+  document.getElementById('settingsChangeServer').style.display = 'none';
+  document.getElementById('settingsAbout').style.display = 'none';
+  document.getElementById('settingsMsg').className = 'modal-message';
+  document.getElementById('settingsMsg').style.display = 'none';
+  document.getElementById('changePwdEmailMsg').className = 'modal-message';
+  document.getElementById('changePwdEmailMsg').style.display = 'none';
+  document.getElementById('changePwdEmailStep2').style.display = 'none';
+  document.getElementById('changePwdEmailStep1').style.display = 'block';
+  resetMenuAnimations();
+  setTimeout(function() { animateMenuItems('in'); }, 50);
+  fetchDynamicCode();
+  if (dynamicCodeTimer) clearInterval(dynamicCodeTimer);
+  dynamicCodeTimer = setInterval(fetchDynamicCode, 10000);
+}
+
+function fetchDynamicCode() {
+  let xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/dynamic-code', true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState === 4 && xhr.status === 200) {
+      try {
+        let r = JSON.parse(xhr.responseText);
+        if (r.success) {
+          document.getElementById('dynamicCodeDisplay').textContent = r.code;
+          document.getElementById('dynamicCodeInSettings').style.display = 'block';
+        }
+      } catch(e) {}
+    }
+  };
+  xhr.send(JSON.stringify({phone: userPhone}));
+}
+
+function dismissForgotPwd() {
+  document.getElementById('forgotPwdModal').classList.remove('show');
+}
+
+document.getElementById('settingsBtn').addEventListener('click', function() {
+  document.getElementById('settingsModal').classList.add('show');
+  setTimeout(function() { showSettingsMenu(); }, 100);
+});
+
+document.getElementById('closeSettingsBtn').addEventListener('click', function() {
+  animateMenuItems('out');
+  setTimeout(function() {
+    document.getElementById('settingsModal').classList.remove('show');
+    if (dynamicCodeTimer) { clearInterval(dynamicCodeTimer); dynamicCodeTimer = null; }
+  }, 300);
+});
+
+// 账号信息
+document.getElementById('menuAccountInfo').addEventListener('click', function() {
+  if (dynamicCodeTimer) { clearInterval(dynamicCodeTimer); dynamicCodeTimer = null; }
+  document.getElementById('settingsMenu').style.display = 'none';
+  document.getElementById('settingsAccountInfo').style.display = 'block';
+  document.getElementById('accountInfoDetail').textContent = '加载中...';
+  apiPost('/api/auth/user/info', {}, function(result) {
+    let d = result.data;
+    document.getElementById('accountInfoDetail').innerHTML =
+      '手机号: ' + escHtml(d.phone) + '<br>' +
+      '邮箱: ' + escHtml(d.email) + '<br>' +
+      '注册时间: ' + escHtml(d.registered_at) + '<br>' +
+      '最后登录: ' + escHtml(d.last_login_at || '首次登录');
+  }, function(result) {
+    document.getElementById('accountInfoDetail').textContent = '获取信息失败';
+  });
+});
+document.getElementById('backFromAccountInfo').addEventListener('click', showSettingsMenu);
+
+// 修改密码
+document.getElementById('menuChangePwd').addEventListener('click', function() {
+  if (dynamicCodeTimer) { clearInterval(dynamicCodeTimer); dynamicCodeTimer = null; }
+  document.getElementById('settingsMenu').style.display = 'none';
+  document.getElementById('settingsChangePwd').style.display = 'block';
+});
+document.getElementById('backToSettingsFromPwd').addEventListener('click', showSettingsMenu);
+document.getElementById('changePwdBtn').addEventListener('click', function() {
+  let cur = document.getElementById('curPwd').value;
+  let pwd = document.getElementById('newPwd').value;
+  let confirm = document.getElementById('confirmPwd').value;
+  if (!cur || !pwd || !confirm) { showModalMsg('settingsMsg', '请填写所有字段', 'error'); return; }
+  if (pwd !== confirm) { showModalMsg('settingsMsg', '两次密码不一致', 'error'); return; }
+  let valid = /[0-9]/.test(pwd) && /[a-z]/.test(pwd) && /[A-Z]/.test(pwd) && /[!@#$%^&*()_+\-=\[\]{}|;':",.<>?\/~`]/.test(pwd) && pwd.length >= 8 && pwd.length <= 32;
+  if (!valid) { showModalMsg('settingsMsg', '密码必须包含数字、大小写字母、特殊符号，8-32位', 'error'); return; }
+  apiPost('/api/auth/change-password', {currentPassword: cur, newPassword: pwd}, function(result) {
+    showModalMsg('settingsMsg', '密码修改成功', 'success');
+    document.getElementById('curPwd').value = '';
+    document.getElementById('newPwd').value = '';
+    document.getElementById('confirmPwd').value = '';
+  }, function(result) {
+    showModalMsg('settingsMsg', result.message || '修改失败', 'error');
+  });
+});
+
+// 邮箱验证修改密码
+document.getElementById('menuChangePwdByEmail').addEventListener('click', function() {
+  if (dynamicCodeTimer) { clearInterval(dynamicCodeTimer); dynamicCodeTimer = null; }
+  document.getElementById('settingsMenu').style.display = 'none';
+  document.getElementById('settingsChangePwdByEmail').style.display = 'block';
+  document.getElementById('changePwdEmailMsg').className = 'modal-message';
+  document.getElementById('changePwdEmailMsg').style.display = 'none';
+  document.getElementById('changePwdEmailStep2').style.display = 'none';
+  document.getElementById('changePwdEmailStep1').style.display = 'block';
+});
+document.getElementById('backToSettingsFromPwdEmail').addEventListener('click', showSettingsMenu);
+document.getElementById('sendChangePwdEmailCodeBtn').addEventListener('click', function() {
+  let btn = this;
+  btn.disabled = true;
+  btn.textContent = '发送中...';
+  apiPost('/api/auth/login/send-email-code', {phone: userPhone}, function(result) {
+    showModalMsg('changePwdEmailMsg', '验证码已发送到您的邮箱，有效期2分钟', 'success');
+    document.getElementById('changePwdEmailStep1').style.display = 'none';
+    document.getElementById('changePwdEmailStep2').style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '发送验证码到邮箱';
+  }, function(result) {
+    showModalMsg('changePwdEmailMsg', result.message || '发送失败', 'error');
+    btn.disabled = false;
+    btn.textContent = '发送验证码到邮箱';
+  });
+});
+document.getElementById('changePwdByEmailBtn').addEventListener('click', function() {
+  let code = document.getElementById('changePwdEmailCode').value.trim();
+  let pwd = document.getElementById('changePwdEmailNewPwd').value;
+  let confirm = document.getElementById('changePwdEmailConfirmPwd').value;
+  if (!code) { showModalMsg('changePwdEmailMsg', '请输入验证码', 'error'); return; }
+  if (!pwd || !confirm) { showModalMsg('changePwdEmailMsg', '请填写新密码', 'error'); return; }
+  if (pwd !== confirm) { showModalMsg('changePwdEmailMsg', '两次密码不一致', 'error'); return; }
+  let valid = /[0-9]/.test(pwd) && /[a-z]/.test(pwd) && /[A-Z]/.test(pwd) && /[!@#$%^&*()_+\-=\[\]{}|;':",.<>?\/~`]/.test(pwd) && pwd.length >= 8 && pwd.length <= 32;
+  if (!valid) { showModalMsg('changePwdEmailMsg', '密码必须包含数字、大小写字母、特殊符号，8-32位', 'error'); return; }
+  apiPost('/api/auth/change-password-by-email', {emailCode: code, newPassword: pwd}, function(result) {
+    showModalMsg('changePwdEmailMsg', '密码修改成功', 'success');
+    document.getElementById('changePwdEmailCode').value = '';
+    document.getElementById('changePwdEmailNewPwd').value = '';
+    document.getElementById('changePwdEmailConfirmPwd').value = '';
+  }, function(result) {
+    showModalMsg('changePwdEmailMsg', result.message || '修改失败', 'error');
+  });
+});
+
+// 切换用户
+document.getElementById('menuSwitchUser').addEventListener('click', function() {
+  if (!confirm('退出当前账号，跳转到登录页。\n可选择其他账号重新登录。')) return;
+  apiPost('/api/auth/logout', {}, function(result) {
+    window.location.href = '/login.html';
+  }, function() { window.location.href = '/login.html'; });
+});
+
+// 更换服务器
+document.getElementById('menuChangeServer').addEventListener('click', function() {
+  document.getElementById('settingsMenu').style.display = 'none';
+  document.getElementById('settingsChangeServer').style.display = 'block';
+  document.getElementById('newServerAddr').value = '';
+});
+document.getElementById('backToSettingsFromServer').addEventListener('click', showSettingsMenu);
+document.getElementById('confirmChangeServer').addEventListener('click', function() {
+  let addr = document.getElementById('newServerAddr').value.trim();
+  if (!addr) { showModalMsg('settingsMsg', '地址不能为空', 'error'); return; }
+  document.cookie = 'server_addr=' + encodeURIComponent(addr) + '; path=/';
+  showModalMsg('settingsMsg', '服务器地址已更新，请在浏览器中打开新地址', 'success');
+});
+
+// 退出登录
+document.getElementById('menuLogout').addEventListener('click', function() {
+  if (!confirm('清除本地记录，完全退出到登录页。\n下次使用需重新输入服务器地址。')) return;
+  apiPost('/api/auth/logout', {}, function(result) {
+    window.location.reload();
+  }, function() { window.location.reload(); });
+});
+
+// 关于
+document.getElementById('menuAbout').addEventListener('click', function() {
+  document.getElementById('settingsMenu').style.display = 'none';
+  document.getElementById('settingsAbout').style.display = 'block';
+});
+document.getElementById('backToSettingsFromAbout').addEventListener('click', showSettingsMenu);
+
+function showModalMsg(id, text, type) {
+  let el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'modal-message ' + type;
+  el.style.display = 'block';
+}
+
+// 点击遮罩关闭弹窗
+document.querySelectorAll('.modal-overlay').forEach(function(el) {
+  el.addEventListener('click', function(e) {
+    if (e.target === this) {
+      if (this.id === 'settingsModal') {
+        animateMenuItems('out');
+        let self = this;
+        setTimeout(function() { self.classList.remove('show'); }, 300);
+      } else {
+        this.classList.remove('show');
+      }
+    }
+  });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+  checkLogin();
+  if (window.location.search.indexOf('pwdTip=1') !== -1) {
+    setTimeout(function() {
+      if (isLoggedIn) document.getElementById('forgotPwdModal').classList.add('show');
+      history.replaceState(null, '', '/');
+    }, 1500);
+  }
+});
+</script>
+</body>
+</html>

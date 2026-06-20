@@ -1,0 +1,37 @@
+# -- 敏感数据 --
+server/data/
+server/*.pid
+server/*.log
+**/data/*.db
+**/data/*.txt
+**/data/*.json
+*.log
+
+# -- Python --
+__pycache__/
+*.pyc
+*.pyo
+*.py~
+.venv/
+venv/
+env/
+.python-version
+
+# -- Android 编译 --
+mobile/SmsToWeb/.gradle/
+mobile/SmsToWeb/app/build/
+mobile/SmsToWeb/build/
+*.apk
+*.aab
+*.keystore
+*.jks
+local.properties
+
+# -- IDE --
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

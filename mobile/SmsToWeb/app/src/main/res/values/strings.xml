@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">短信转网页</string>
+    <string name="open_source_notice">&#9733; 开源项目\n\n本项目代码完全开源，欢迎关注和 Star！\n\nGitHub: https://github.com/Li-Zhangye/stw\nGitee: https://gitee.com/li-zhangye/stw</string>
+    <string name="server_address_hint">服务器地址 (例如 192.168.1.100:3000)</string>
+    <string name="phone_hint">手机号</string>
+    <string name="password_hint">密码</string>
+    <string name="email_hint">邮箱</string>
+    <string name="code_hint">验证码</string>
+    <string name="login">登录</string>
+    <string name="register">注册</string>
+    <string name="send_code">发送验证码</string>
+    <string name="verify">验证</string>
+    <string name="set_password">设置密码</string>
+    <string name="confirm_password">确认密码</string>
+    <string name="complete_register">完成注册</string>
+    <string name="logout">退出登录</string>
+    <string name="delete_account">注销账号</string>
+    <string name="no_account">没有账号？去注册</string>
+    <string name="has_account">已有账号？去登录</string>
+    <string name="password_rules">密码必须包含数字、大小写字母、特殊符号，长度6-32位</string>
+    <string name="dynamic_code_title">动态验证码</string>
+    <string name="dynamic_code_timer">每10秒自动刷新</string>
+    <string name="email_code_title">邮箱验证码</string>
+    <string name="send_email_code">发送邮箱验证码</string>
+    <string name="loading">处理中…</string>
+    <string name="privacy_text">尊敬的用户，感谢您使用短信转网页（以下简称"本应用"）。
+
+本应用尊重并保护您的隐私。在您使用本应用前，请仔细阅读以下协议：
+
+一、信息收集与使用
+1. 本应用仅在您明确授权的情况下，读取手机收到的短信内容，并将其转发到您自己搭建的服务器上。
+2. 所有短信数据仅存储在您自己的服务器中，不会上传到任何第三方服务器。
+3. 本应用不会收集您的任何个人身份信息、通讯录、位置信息等。
+
+二、权限说明
+1. 存储权限：用于将运行日志保存到手机存储，方便您排查问题。
+2. 短信权限：用于接收和读取短信，实现短信转发功能。
+
+三、免责声明
+1. 本应用为开源工具，仅供学习交流使用。
+2. 您自行承担使用本应用的一切风险，包括但不限于短信内容泄露等。
+
+如您同意以上条款，请点击"同意并继续"开始使用本应用。如不同意，请卸载本应用。</string>
+</resources>

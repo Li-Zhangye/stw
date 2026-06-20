@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理控制台 - 短信转网页</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/icon.png">
+  <script src="/js/i18n.js" defer></script>
+  <script src="/js/theme.js" defer></script>
+  <style>
+    body { background: #1a1a2e; padding: 0; display: block; }
+    .console-wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .console-header {
+      background: #1e2a4a;
+      padding: 18px 24px;
+      border-radius: 8px;
+      color: #fff;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 3px solid #1677ff;
+    }
+    .console-header .level-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-left: 8px;
+    }
+    .level-1 { background: #2a3a5a; color: #8a9ab0; }
+    .level-2 { background: #1a3a2a; color: #52b788; }
+    .level-3 { background: #3a1a1a; color: #ff6b6b; }
+    .console-header h1 { margin: 0; font-size: 20px; color: #fff; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+    .console-logo { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; }
+    .console-header .info { font-size: 12px; color: #8a9ab0; }
+    .console-header .logout-btn {
+      background: #ff4d4f;
+      border: none;
+      color: #fff;
+      padding: 7px 18px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .console-header .logout-btn:hover { opacity: 0.85; }
+    .console-header .right-area { display: flex; align-items: center; gap: 12px; }
+    .notification-bell { position: relative; cursor: pointer; font-size: 18px; color: #8a9ab0; }
+    .notification-bell .badge {
+      position: absolute; top: -6px; right: -8px;
+      background: #1677ff; color: #fff; border-radius: 50%;
+      padding: 1px 5px; font-size: 10px; min-width: 15px; text-align: center;
+    }
+    .notification-bell:hover { color: #1677ff; }
+    .login-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(26,26,46,0.95);
+      display: flex; align-items: center; justify-content: center; z-index: 999;
+    }
+    .login-box {
+      background: #1e2a4a;
+      padding: 32px;
+      border-radius: 8px;
+      width: 100%; max-width: 380px;
+    }
+    .login-box h2 { color: #fff; text-align: center; margin-bottom: 8px; font-weight: 600; }
+    .login-box p { color: #8a9ab0; text-align: center; margin-bottom: 20px; font-size: 13px; }
+    .login-box input {
+      width: 100%; padding: 10px 12px;
+      border: 1px solid #2a3a5a; border-radius: 4px;
+      font-size: 14px; background: #162040; color: #eee;
+      outline: none; margin-bottom: 12px;
+    }
+    .login-box input:focus { border-color: #1677ff; }
+    .login-box .btn { background: #1677ff; border-radius: 4px; }
+    .login-box .btn:hover { opacity: 0.88; }
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stat-card {
+      background: #1e2a4a;
+      border-radius: 6px;
+      padding: 16px 20px;
+      border-left: 3px solid #1677ff;
+    }
+    .stat-card .num { font-size: 24px; font-weight: 700; color: #fff; }
+    .stat-card .label { font-size: 12px; color: #8a9ab0; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card {
+      background: #1e2a4a;
+      border-radius: 6px;
+      padding: 18px;
+      margin-bottom: 16px;
+      color: #ccc;
+    }
+    .card h3 { color: #1677ff; margin-bottom: 12px; font-size: 15px; font-weight: 600; }
+    .card .filters { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+    .card .filters input, .card .filters select {
+      background: #162040;
+      border: 1px solid #2a3a5a;
+      padding: 7px 10px;
+      border-radius: 4px;
+      color: #eee;
+      font-size: 13px;
+    }
+    .card .filters input:focus, .card .filters select:focus { border-color: #1677ff; }
+    .card .filters button {
+      background: #1677ff;
+      border: none;
+      color: #fff;
+      padding: 7px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .card .filters button:hover { opacity: 0.88; }
+    .card .filters .btn-secondary { background: #2a3a5a; }
+    .card .filters .btn-secondary:hover { background: #3a4a6a; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table th {
+      background: #162040;
+      color: #8a9ab0;
+      padding: 10px 8px;
+      text-align: left;
+      font-weight: 600;
+      white-space: nowrap;
+      border-bottom: 2px solid #2a3a5a;
+    }
+    table td {
+      padding: 8px;
+      border-bottom: 1px solid #2a3a5a;
+      color: #ccc;
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    table tr:hover td { background: #253050; }
+    .log-status { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; }
+    .log-status.success { background: #1a3a2a; color: #52b788; }
+    .log-status.fail { background: #3a1a1a; color: #ff6b6b; }
+    .tab-bar { display: flex; gap: 2px; margin-bottom: 16px; background: #1e2a4a; border-radius: 6px; padding: 4px; flex-wrap: wrap; }
+    .tab-bar button {
+      padding: 8px 14px;
+      background: transparent;
+      border: none;
+      color: #8a9ab0;
+      font-size: 13px;
+      cursor: pointer;
+      transition: 0.2s;
+      border-radius: 4px;
+    }
+    .tab-bar button.active { background: #1677ff; color: #fff; }
+    .tab-bar button:hover:not(.active) { background: #2a3a5a; }
+    .tab-bar button.disabled-tab { opacity: 0.4; cursor: not-allowed; }
+    .tab-bar button.disabled-tab:hover { background: transparent; }
+    .tab-bar button .badge {
+      display: inline-block; background: #1677ff; color: #fff;
+      border-radius: 50%; padding: 1px 5px; font-size: 10px; min-width: 14px; text-align: center; margin-left: 4px;
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .hash-val { font-family: monospace; font-size: 11px; color: #888; word-break: break-all; max-width: 200px; }
+    .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 15px; align-items: center; }
+    .pagination button {
+      background: #0f3460;
+      border: none;
+      color: #ccc;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .pagination button:hover { background: #1677ff; color: #fff; }
+    .pagination button:disabled { opacity: 0.3; cursor: default; }
+    .pagination .page-info { color: #8899aa; font-size: 13px; margin: 0 8px; }
+    .sys-info { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .sys-info .item { padding: 10px; background: #1a1a2e; border-radius: 6px; }
+    .sys-info .item .k { color: #8899aa; font-size: 12px; }
+    .sys-info .item .v { color: #eee; font-size: 14px; margin-top: 3px; }
+    .msg-console { display: none; }
+    .action-btn {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      border: none;
+      color: #fff;
+      margin-right: 4px;
+    }
+    .action-btn.danger { background: #dc3545; }
+    .action-btn.success { background: #52b788; }
+    .action-btn.info { background: #0f3460; }
+    .action-btn.warning { background: #e9a520; }
+    .action-btn:hover { opacity: 0.8; }
+    .action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-box {
+      background: #1e2a4a;
+      border-radius: 8px;
+      padding: 24px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 85vh;
+      overflow-y: auto;
+      color: #ccc;
+    }
+    .modal-box h2 { color: #fff; margin-bottom: 16px; font-weight: 600; }
+    .modal-box .close-btn {
+      float: right;
+      background: transparent;
+      border: none;
+      color: #8a9ab0;
+      font-size: 22px;
+      cursor: pointer;
+    }
+    .modal-box .close-btn:hover { color: #fff; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .detail-grid .item { padding: 10px; background: #162040; border-radius: 4px; }
+    .detail-grid .item .k { color: #8a9ab0; font-size: 12px; }
+    .detail-grid .item .v { color: #eee; font-size: 14px; margin-top: 2px; word-break: break-all; }
+    .modal-box table { font-size: 12px; }
+    .modal-box table th { font-size: 12px; padding: 6px; }
+    .modal-box table td { font-size: 12px; padding: 6px; max-width: 250px; }
+    @media (max-width: 768px) {
+      .console-wrap { padding: 10px; }
+      .dashboard-grid { grid-template-columns: 1fr 1fr; }
+      .sys-info { grid-template-columns: 1fr; }
+      table { font-size: 12px; }
+      table th, table td { padding: 6px 4px; }
+      .detail-grid { grid-template-columns: 1fr; }
+      .tab-bar button { font-size: 11px; padding: 8px 6px; }
+    }
+    .user-link { color: #1677ff; cursor: pointer; }
+    .user-link:hover { text-decoration: underline; }
+    .sms-content { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .online-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .online-dot.online { background: #52b788; }
+    .online-dot.offline { background: #555; }
+    .level-tag { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 11px; }
+    .level-tag.l1 { background: #2a3a5a; color: #8a9ab0; }
+    .level-tag.l2 { background: #1a3a2a; color: #52b788; }
+    .level-tag.l3 { background: #3a1a1a; color: #ff6b6b; }
+    .report-reason { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; }
+    .report-reason.pending { background: #4a3a1a; color: #e9a520; }
+    .report-reason.approved { background: #1a3a2a; color: #52b788; }
+    .report-reason.rejected { background: #3a1a1a; color: #ff6b6b; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; color: #8a9ab0; font-size: 13px; margin-bottom: 5px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 9px 12px;
+      border: 1px solid #2a3a5a; border-radius: 4px;
+      background: #162040; color: #eee;
+      font-size: 14px;
+    }
+    .form-group textarea { min-height: 80px; resize: vertical; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      border-color: #1677ff; outline: none;
+    }
+    .inline-flex { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .mb-10 { margin-bottom: 10px; }
+    .mt-10 { margin-top: 10px; }
+    .text-muted { color: #8899aa; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="loginOverlay" class="login-overlay">
+    <div class="login-box">
+      <h2>管理控制台</h2>
+      <p>请输入管理员账号和密码</p>
+      <div id="loginMsg" class="message" style="display:none;"></div>
+      <input type="text" id="adminUser" placeholder="用户名" autocomplete="off">
+      <input type="password" id="adminPass" placeholder="密码" autocomplete="off">
+      <button class="btn" id="adminLoginBtn" onclick="adminLogin()">登录</button>
+    </div>
+  </div>
+
+  <div id="consoleMain" style="display:none;">
+    <div class="console-wrap">
+      <div class="console-header">
+        <div>
+          <h1><img src="/icon.png" class="console-logo" alt=""> 管理控制台 <span id="levelBadge" class="level-badge"></span></h1>
+          <div class="info" id="serverInfo">加载中...</div>
+        </div>
+        <div class="right-area">
+          <select id="langSwitcher" style="font-size:11px;padding:2px 4px;border-radius:4px;border:1px solid #334;background:#1e2a4a;color:#8a9ab0;cursor:pointer;" onchange="switchLang(this.value)"></select>
+          <span id="daemonStatus" style="margin-right:12px;font-size:13px;color:#8899aa;">守护进程: <span id="daemonIndicator" style="color:#dc3545;">离线</span></span>
+          <button class="logout-btn" onclick="restartDaemon()" title="重启守护进程" style="margin-right:8px;">重启</button>
+            <div class="notification-bell" onclick="switchTab('reports')" title="报告通知">
+            <span id="reportBadge" class="badge" style="display:none;">0</span>
+          </div>
+          <button class="logout-btn" onclick="adminLogout()">退出登录</button>
+        </div>
+      </div>
+
+      <div id="consoleMsg" class="message msg-console"></div>
+
+      <div class="tab-bar" id="tabBar">
+        <button class="active" data-tab="stats">概览</button>
+        <button data-tab="logs">日志</button>
+        <button data-tab="users" class="level-required" data-min-level="2">用户</button>
+        <button data-tab="reports" class="level-required" data-min-level="2">报告</button>
+        <button data-tab="managers" class="level-required" data-min-level="1">管理员</button>
+        <button data-tab="system">系统</button>
+        <button data-tab="mail" class="level-required" data-min-level="2">邮件</button>
+        <button data-tab="mod" class="level-required" data-min-level="2">Mod</button>
+      </div>
+
+      <div id="tabStats" class="tab-content active">
+        <div class="dashboard-grid" id="statsGrid">
+          <div class="stat-card"><div class="num" id="statActiveUsers">-</div><div class="label">活跃用户数</div></div>
+          <div class="stat-card"><div class="num" id="statTotalUsers">-</div><div class="label">总注册用户</div></div>
+          <div class="stat-card"><div class="num" id="statTotalLogs">-</div><div class="label">总日志条数</div></div>
+          <div class="stat-card"><div class="num" id="statTodayLogs">-</div><div class="label">今日日志</div></div>
+          <div class="stat-card"><div class="num" id="statUptime">-</div><div class="label">运行时长</div></div>
+        </div>
+        <div class="card">
+          <h3>操作分类统计</h3>
+          <div id="actionStats"></div>
+        </div>
+      </div>
+
+      <div id="tabLogs" class="tab-content">
+        <div class="card">
+          <h3>操作日志</h3>
+          <div class="filters">
+            <input type="text" id="logPhoneFilter" placeholder="按手机号筛选" style="width:140px;">
+            <select id="logActionFilter">
+              <option value="">全部操作</option>
+              <option value="登录">登录</option>
+              <option value="注册发码">注册发码</option>
+              <option value="注册验证">注册验证</option>
+              <option value="注册设密">注册设密</option>
+              <option value="发送邮箱验证码">发送邮箱验证码</option>
+              <option value="验证邮箱码登录">验证邮箱码登录</option>
+              <option value="退出登录">退出登录</option>
+              <option value="注销账号">注销账号</option>
+              <option value="管理登录">管理登录</option>
+              <option value="禁用用户">禁用用户</option>
+              <option value="启用用户">启用用户</option>
+              <option value="删除用户">删除用户</option>
+            </select>
+            <button onclick="loadLogs()">查询</button>
+            <button class="btn-secondary" onclick="refreshLogs()">刷新</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead><tr><th>时间</th><th>手机号</th><th>操作</th><th>详情</th><th>IP</th><th>状态</th></tr></thead>
+              <tbody id="logTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="tabUsers" class="tab-content">
+        <div class="card">
+          <h3>用户列表</h3>
+          <div class="filters">
+            <input type="text" id="userPhoneFilter" placeholder="手机号" style="width:130px;">
+            <input type="text" id="userEmailFilter" placeholder="邮箱" style="width:180px;">
+            <button onclick="loadUsers()">搜索</button>
+            <button class="btn-secondary" onclick="document.getElementById('userPhoneFilter').value='';document.getElementById('userEmailFilter').value='';loadUsers()">重置</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead><tr>
+                <th>ID</th><th>手机号</th><th>邮箱</th><th>注册时间</th><th>最后活跃</th><th>最后登录</th><th>短信数</th><th>状态</th><th>操作</th>
+              </tr></thead>
+              <tbody id="userTableBody"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="userPagination"></div>
+        </div>
+      </div>
+
+      <div id="tabReports" class="tab-content">
+        <div class="card">
+          <h3>报告管理</h3>
+          <div class="filters" id="reportFilters">
+            <select id="reportStatusFilter">
+              <option value="">全部状态</option>
+              <option value="pending">待处理</option>
+              <option value="approved">已批准</option>
+              <option value="rejected">已驳回</option>
+            </select>
+            <button onclick="loadReports()">查询</button>
+            <button id="btnCreateReport" class="btn-secondary" onclick="showCreateReport()">+ 提交报告</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead><tr><th>ID</th><th>报告人</th><th>目标用户</th><th>原因</th><th>详情</th><th>状态</th><th>创建时间</th><th>处理人</th><th>操作</th></tr></thead>
+              <tbody id="reportTableBody"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="reportPagination"></div>
+        </div>
+      </div>
+
+      <div id="tabManagers" class="tab-content">
+        <div class="card">
+          <h3>管理员列表</h3>
+          <div class="filters">
+            <button id="btnCreateManager" class="btn-secondary" onclick="showCreateManager()">+ 创建管理员</button>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead><tr><th>用户名</th><th>等级</th><th>状态</th><th>创建时间</th><th>创建人</th><th>操作</th></tr></thead>
+              <tbody id="managerTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="tabSystem" class="tab-content">
+        <div class="card">
+          <h3>系统信息</h3>
+          <div class="sys-info" id="sysInfo"></div>
+        </div>
+      </div>
+
+      <div id="tabMail" class="tab-content">
+        <div class="card">
+          <h3>邮件配置（SMTP）</h3>
+          <p style="color:#8899aa;font-size:13px;margin-bottom:15px;">配置后用于发送注册验证码和登录验证码。<br>QQ邮箱SMTP：host=smtp.qq.com, port=465, 需要开启TLS，密码填授权码</p>
+          <div id="mailMsg" class="message" style="display:none;"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+            <div style="grid-column:1/2;">
+              <label style="color:#8899aa;font-size:13px;">SMTP服务器</label>
+              <input type="text" id="mailHost" placeholder="smtp.qq.com" style="width:100%;background:#1a1a2e;border:1.5px solid #0f3460;padding:10px;border-radius:6px;color:#eee;margin-top:5px;box-sizing:border-box;">
+            </div>
+            <div style="grid-column:2/3;">
+              <label style="color:#8899aa;font-size:13px;">端口</label>
+              <input type="number" id="mailPort" placeholder="465" value="465" style="width:100%;background:#1a1a2e;border:1.5px solid #0f3460;padding:10px;border-radius:6px;color:#eee;margin-top:5px;box-sizing:border-box;">
+            </div>
+            <div style="grid-column:1/2;">
+              <label style="color:#8899aa;font-size:13px;">邮箱账号</label>
+              <input type="text" id="mailUser" placeholder="your@qq.com" style="width:100%;background:#1a1a2e;border:1.5px solid #0f3460;padding:10px;border-radius:6px;color:#eee;margin-top:5px;box-sizing:border-box;">
+            </div>
+            <div style="grid-column:2/3;">
+              <label style="color:#8899aa;font-size:13px;">密码/授权码</label>
+              <input type="password" id="mailPass" placeholder="授权码" style="width:100%;background:#1a1a2e;border:1.5px solid #0f3460;padding:10px;border-radius:6px;color:#eee;margin-top:5px;box-sizing:border-box;">
+            </div>
+            <div style="grid-column:1/2;">
+              <label style="color:#8899aa;font-size:13px;">发件人地址</label>
+              <input type="text" id="mailFromAddr" placeholder="your@qq.com" style="width:100%;background:#1a1a2e;border:1.5px solid #0f3460;padding:10px;border-radius:6px;color:#eee;margin-top:5px;box-sizing:border-box;">
+            </div>
+            <div style="grid-column:2/3;">
+              <label style="color:#8899aa;font-size:13px;">发件人名称</label>
+              <input type="text" id="mailFromName" placeholder="短信转网页" style="width:100%;background:#1a1a2e;border:1.5px solid #0f3460;padding:10px;border-radius:6px;color:#eee;margin-top:5px;box-sizing:border-box;">
+            </div>
+          </div>
+          <div style="margin:15px 0;">
+            <label style="color:#8899aa;font-size:13px;">
+              <input type="checkbox" id="mailTls" checked> 使用TLS加密（QQ邮箱需勾选）
+            </label>
+            <label style="color:#8899aa;font-size:13px;margin-left:20px;">
+              <input type="checkbox" id="mailVerifySsl" checked> SSL证书验证（Termux环境如报错可取消勾选）
+            </label>
+          </div>
+          <div class="inline-flex">
+            <button class="btn" onclick="saveMailConfig()" style="max-width:200px;">保存配置</button>
+            <button class="btn btn-secondary" onclick="loadMailConfig()">读取当前配置</button>
+          </div>
+          <div id="mailStatus" style="margin-top:15px;color:#8899aa;font-size:13px;"></div>
+        </div>
+      </div>
+
+      <div id="tabMod" class="tab-content">
+        <div class="card">
+          <h3>Mod 文件管理</h3>
+          <div class="filters">
+            <button class="btn-secondary" onclick="loadModFiles()">刷新列表</button>
+            <button class="btn-secondary" onclick="clearModPriorities()">清除优先级</button>
+            <button class="btn-secondary" onclick="reloadMod()">重载 Mod</button>
+            <button class="btn-secondary" onclick="scanModFiles()" id="scanBtn">安全扫描</button>
+          </div>
+          <div id="modMsg" class="message" style="display:none;"></div>
+          <div id="scanResult" class="card" style="display:none;padding:12px;margin-bottom:15px;background:#1a1a2e;">
+            <div style="display:flex;gap:15px;flex-wrap:wrap;" id="scanSummary"></div>
+            <div style="margin-top:8px;max-height:300px;overflow-y:auto;" id="scanDetails"></div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead><tr><th>路径</th><th>语言</th><th>大小</th><th>状态</th><th>优先级</th><th>操作</th></tr></thead>
+              <tbody id="modTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <h3>上传 Mod 文件</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;max-width:600px;">
+            <select id="modUploadSubdir" style="background:#1a1a2e;border:1.5px solid #0f3460;padding:10px;border-radius:6px;color:#eee;">
+              <option value="public">public/</option>
+              <option value="server">server/</option>
+              <option value="plugins">plugins/</option>
+            </select>
+            <input type="text" id="modUploadFilename" placeholder="文件名 (如 custom.css)" style="background:#1a1a2e;border:1.5px solid #0f3460;padding:10px;border-radius:6px;color:#eee;">
+            <button class="btn-secondary" onclick="document.getElementById('modFileInput').click()">选择文件</button>
+            <input type="file" id="modFileInput" style="display:none" onchange="onModFileSelected()">
+          </div>
+          <div id="modUploadStatus" style="color:#8899aa;font-size:13px;margin-top:8px;"></div>
+          <button class="btn" onclick="uploadModFile()" style="max-width:200px;margin-top:10px;" id="modUploadBtn">上传</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script>
+    function escHtml(s) {
+      if (typeof s !== 'string') s = String(s || '');
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function switchLang(code) {
+      i18n.setLang(code);
+      i18n.applyLangToPage();
+      var sel = document.getElementById('langSwitcher');
+      if (sel) sel.value = code;
+    }
+    function initLangSwitcher() {
+      var sel = document.getElementById('langSwitcher');
+      if (!sel) return;
+      var langs = i18n.getLanguages();
+      var current = i18n.getLang();
+      sel.innerHTML = '';
+      langs.forEach(function(l) {
+        var opt = document.createElement('option');
+        opt.value = l.code;
+        opt.textContent = l.name;
+        if (l.code === current) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+    var savedLang = i18n.getLang();
+    if (savedLang && savedLang !== 'zh') {
+      i18n.setLang(savedLang);
+    }
+    i18n.applyLangToPage();
+    initLangSwitcher();
+
+    let isAdmin = false;
+    let adminLevel = 0;
+    let currentUsername = '';
+    let logPage = 0;
+    let logLimit = 200;
+    let userPage = 0;
+    let userLimit = 50;
+    let reportPage = 0;
+    let reportLimit = 20;
+
+    let levelNames = {1: '普通管理员', 2: '中级管理员', 3: '超级管理员'};
+    let levelClasses = {1: 'level-1', 2: 'level-2', 3: 'level-3'};
+
+    function showConsoleMsg(type, text) {
+      let el = document.getElementById('consoleMsg');
+      el.className = 'message msg-console ' + type;
+      el.textContent = text;
+      el.style.display = 'block';
+      setTimeout(function () { el.style.display = 'none'; }, 3000);
+    }
+
+    function apiPostWithCookie(url, data, onSuccess, onError) {
+      let xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      xhr.setRequestHeader('Content-Type', 'application/json; charset=utf-8');
+      xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+      xhr.withCredentials = true;
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4) {
+          try {
+            let result = JSON.parse(xhr.responseText);
+            if (result.success) { if (onSuccess) onSuccess(result); }
+            else { if (onError) onError(result); }
+          } catch (e) {
+            if (onError) onError({message:'数据异常'});
+            else showConsoleMsg('error', '数据异常');
+          }
+        }
+      };
+      xhr.onerror = function () { if (onError) onError({message:'请求失败'}); };
+      xhr.send(JSON.stringify(data));
+    }
+
+    function checkLevelRequired(level) {
+      return adminLevel >= level;
+    }
+
+    function updateTabVisibility() {
+      document.querySelectorAll('.level-required').forEach(function (btn) {
+        let minLevel = parseInt(btn.getAttribute('data-min-level')) || 1;
+        if (!checkLevelRequired(minLevel)) {
+          btn.classList.add('disabled-tab');
+          btn.title = '等级不足（需要' + levelNames[minLevel] + '）';
+        } else {
+          btn.classList.remove('disabled-tab');
+          btn.title = '';
+        }
+      });
+    }
+
+    function adminLogin() {
+      let user = document.getElementById('adminUser').value;
+      let pass = document.getElementById('adminPass').value;
+      if (!user || !pass) {
+        let msg = document.getElementById('loginMsg');
+        msg.className = 'message error';
+        msg.textContent = '请输入用户名和密码';
+        msg.style.display = 'block';
+        return;
+      }
+      apiPostWithCookie('/api/admin/login', {username: user, password: pass},
+        function (r) {
+          isAdmin = true;
+          adminLevel = r.level || 3;
+          currentUsername = user;
+          document.getElementById('loginOverlay').style.display = 'none';
+          document.getElementById('consoleMain').style.display = 'block';
+          updateLevelUI();
+          updateTabVisibility();
+          loadAll();
+        },
+        function (r) {
+          let msg = document.getElementById('loginMsg');
+          msg.className = 'message error';
+          msg.textContent = r.message || '登录失败';
+          msg.style.display = 'block';
+        }
+      );
+    }
+
+    function adminLogout() {
+      apiPostWithCookie('/api/admin/logout', {}, function () {
+        isAdmin = false;
+        adminLevel = 0;
+        currentUsername = '';
+        document.getElementById('loginOverlay').style.display = 'flex';
+        document.getElementById('consoleMain').style.display = 'none';
+        document.getElementById('adminUser').value = '';
+        document.getElementById('adminPass').value = '';
+      });
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab-content').forEach(function (e) { e.classList.remove('active'); });
+      document.querySelectorAll('.tab-bar button').forEach(function (e) { e.classList.remove('active'); });
+      let tabId = 'tab' + name.charAt(0).toUpperCase() + name.slice(1);
+      document.getElementById(tabId).classList.add('active');
+      document.querySelector('.tab-bar button[data-tab="' + name + '"]').classList.add('active');
+      if (name === 'logs') loadLogs();
+      if (name === 'users') { userPage = 0; loadUsers(); }
+      if (name === 'system') loadSystem();
+      if (name === 'stats') loadStats();
+      if (name === 'reports') { reportPage = 0; loadReports(); }
+      if (name === 'managers') loadManagers();
+      if (name === 'mail') loadMailConfig();
+      if (name === 'mod') loadModFiles();
+    }
+
+    function updateLevelUI() {
+      let badge = document.getElementById('levelBadge');
+      badge.textContent = levelNames[adminLevel] || '未知等级';
+      badge.className = 'level-badge ' + (levelClasses[adminLevel] || '');
+      updateTabVisibility();
+    }
+
+    function loadAll() { loadStats(); loadReportsCount(); }
+
+    function loadStats() {
+      apiPostWithCookie('/api/admin/stats', {}, function (r) {
+        let s = r.stats;
+        document.getElementById('serverInfo').textContent = '运行中 | ' + s.server_time + ' | 已运行 ' + s.uptime;
+        document.getElementById('statActiveUsers').textContent = s.active_users;
+        document.getElementById('statTotalUsers').textContent = s.total_users;
+        document.getElementById('statTotalLogs').textContent = s.log_stats.total;
+        document.getElementById('statTodayLogs').textContent = s.log_stats.today;
+        document.getElementById('statUptime').textContent = s.uptime;
+        let html = '';
+        if (s.log_stats.actions) {
+          s.log_stats.actions.forEach(function (a) {
+            html += '<span style="display:inline-block;background:#0f3460;padding:4px 12px;border-radius:20px;margin:3px;font-size:13px;color:#ccc;">' +
+              escHtml(a.action) + ': <b style="color:#1677ff;">' + escHtml(String(a.count)) + '</b></span>';
+          });
+        }
+        document.getElementById('actionStats').innerHTML = html || '<span style="color:#8899aa;">暂无数据</span>';
+      });
+      apiGet('/api/panel/status', function (r) {
+        let indicator = document.getElementById('daemonIndicator');
+        if (r.daemon_online) {
+          indicator.textContent = '在线';
+          indicator.style.color = '#52b788';
+        } else {
+          indicator.textContent = '离线';
+          indicator.style.color = '#dc3545';
+        }
+      });
+    }
+
+    function restartDaemon() {
+      if (!confirm('确定重启守护进程？')) return;
+      apiPostWithCookie('/api/admin/daemon/restart', {}, function (r) {
+        showConsoleMsg(r.message || '已请求重启');
+        document.getElementById('daemonIndicator').textContent = '重启中';
+        document.getElementById('daemonIndicator').style.color = '#f0c040';
+      });
+    }
+
+    function loadReportsCount() {
+      if (!checkLevelRequired(3)) return;
+      apiPostWithCookie('/api/admin/report/stats', {}, function (r) {
+        let badge = document.getElementById('reportBadge');
+        if (r.stats && r.stats.pending > 0) {
+          badge.textContent = r.stats.pending;
+          badge.style.display = 'inline';
+        } else {
+          badge.style.display = 'none';
+        }
+      }, function () {});
+    }
+
+    function loadLogs() {
+      let phone = document.getElementById('logPhoneFilter').value.trim();
+      let action = document.getElementById('logActionFilter').value;
+      let data = {limit: logLimit, offset: logPage * logLimit};
+      if (phone) data.phone = phone;
+      if (action) data.action = action;
+      apiPostWithCookie('/api/admin/logs', data, function (r) {
+        let tbody = document.getElementById('logTableBody');
+        if (!r.logs || r.logs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#8899aa;padding:20px;">暂无日志</td></tr>';
+          return;
+        }
+        let html = '';
+        r.logs.forEach(function (log) {
+          let statusClass = log.status === 'fail' ? 'fail' : 'success';
+          html += '<tr>' +
+            '<td>' + escHtml(log.created_at) + '</td>' +
+            '<td>' + escHtml(log.phone) + '</td>' +
+            '<td>' + escHtml(log.action) + '</td>' +
+            '<td>' + escHtml(log.detail) + '</td>' +
+            '<td>' + escHtml(log.ip) + '</td>' +
+            '<td><span class="log-status ' + statusClass + '">' + (log.status === 'fail' ? '失败' : '成功') + '</span></td>' +
+            '</tr>';
+        });
+        tbody.innerHTML = html;
+      });
+    }
+
+    function refreshLogs() { logPage = 0; loadLogs(); }
+
+    function loadUsers() {
+      let phone = document.getElementById('userPhoneFilter').value.trim();
+      let email = document.getElementById('userEmailFilter').value.trim();
+      let data = {page: userPage, limit: userLimit};
+      if (phone) data.phone = phone;
+      if (email) data.email = email;
+      apiPostWithCookie('/api/admin/users', data, function (r) {
+        let tbody = document.getElementById('userTableBody');
+        if (!r.users || r.users.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#8899aa;padding:20px;">暂无用户</td></tr>';
+          document.getElementById('userPagination').innerHTML = '';
+          return;
+        }
+        let canToggle = checkLevelRequired(3);
+        let canDelete = checkLevelRequired(3);
+        let html = '';
+        r.users.forEach(function (u) {
+          let statusHtml = u.is_active
+            ? '<span style="color:#52b788;">正常</span>'
+            : '<span style="color:#f0c040;">已注销</span>';
+          let toggleLabel = u.is_active ? '禁用' : '启用';
+          let toggleClass = u.is_active ? 'danger' : 'success';
+          let actions = '<button class="action-btn info" onclick="showUserDetail(' + u.id + ')">详情</button>';
+          if (canToggle) {
+            actions += '<button class="action-btn ' + toggleClass + '" onclick="toggleUserActive(' + u.id + ')">' + toggleLabel + '</button>';
+          }
+          if (canDelete) {
+            actions += '<button class="action-btn danger" onclick="deleteUser(' + u.id + ')">删除</button>';
+          }
+          if (!canToggle && !canDelete && checkLevelRequired(2)) {
+            actions += '<button class="action-btn warning" onclick="showCreateReportFor(' + u.id + ",'" + escJs(u.phone) + "'" + ')">报告</button>';
+          }
+          html += '<tr>' +
+            '<td>' + u.id + '</td>' +
+            '<td><span class="user-link" onclick="showUserDetail(' + u.id + ')">' + escHtml(u.phone) + '</span></td>' +
+            '<td>' + escHtml(u.email || '-') + '</td>' +
+            '<td>' + escHtml(u.registered_at || '-') + '</td>' +
+            '<td>' + escHtml(u.last_active_at || '-') + '</td>' +
+            '<td>' + escHtml(u.last_login_at || '-') + '</td>' +
+            '<td>' + (u.sms_count || 0) + '</td>' +
+            '<td>' + statusHtml + '</td>' +
+            '<td>' + actions + '</td>' +
+            '</tr>';
+        });
+        tbody.innerHTML = html;
+        renderUserPagination(r.total, r.page, r.limit);
+      });
+    }
+
+    function renderUserPagination(total, page, limit) {
+      let el = document.getElementById('userPagination');
+      let totalPages = Math.ceil(total / limit);
+      if (totalPages <= 1) { el.innerHTML = ''; return; }
+      let html = '';
+      html += '<button ' + (page <= 0 ? 'disabled' : '') + ' onclick="userPage=' + (page - 1) + ';loadUsers()">上一页</button>';
+      html += '<span class="page-info">第 ' + (page + 1) + ' / ' + totalPages + ' 页（共 ' + total + ' 条）</span>';
+      html += '<button ' + (page >= totalPages - 1 ? 'disabled' : '') + ' onclick="userPage=' + (page + 1) + ';loadUsers()">下一页</button>';
+      el.innerHTML = html;
+    }
+
+    function toggleUserActive(userId) {
+      if (!confirm('确定要更改此用户的状态吗？')) return;
+      apiPostWithCookie('/api/admin/user/toggle-active', {user_id: userId},
+        function (r) {
+          showConsoleMsg('success', r.message);
+          loadUsers();
+        },
+        function (r) {
+          showConsoleMsg('error', r.message || '操作失败');
+        }
+      );
+    }
+
+    function deleteUser(userId) {
+      if (!confirm('确定要彻底删除此用户吗？\n\n将同时删除：\n- 用户账号\n- 所有短信记录\n- 授权号码\n- 登录/注册验证码\n\n此操作不可撤销！')) return;
+      if (!confirm('再次确认：此操作不可恢复，确定删除？')) return;
+      apiPostWithCookie('/api/admin/user/delete', {user_id: userId},
+        function (r) {
+          showConsoleMsg('success', r.message);
+          loadUsers();
+          let overlay = document.querySelector('.modal-overlay');
+          if (overlay) overlay.remove();
+        },
+        function (r) {
+          showConsoleMsg('error', r.message || '删除失败');
+        }
+      );
+    }
+
+    function showCreateReportFor(userId, phone) {
+      showCreateReport(userId, phone);
+    }
+
+    function showUserDetail(userId) {
+      apiPostWithCookie('/api/admin/user/detail', {user_id: userId},
+        function (r) {
+          let u = r.user;
+          let authHtml = '';
+          if (u.authorized_phones && u.authorized_phones.length > 0) {
+            u.authorized_phones.forEach(function (a) {
+              authHtml += '<tr><td>' + escHtml(a.authorized_phone) + '</td><td>' + (a.created_at || '-') + '</td></tr>';
+            });
+          } else {
+            authHtml = '<tr><td colspan="2" style="text-align:center;color:#8899aa;">无授权号码</td></tr>';
+          }
+          let statusText = u.is_active ? '正常' : '已注销';
+          let statusColor = u.is_active ? '#52b788' : '#dc3545';
+          let canDelete = checkLevelRequired(3);
+          let canChangePwd = checkLevelRequired(3);
+          let canReport = checkLevelRequired(2) && !checkLevelRequired(3);
+
+          let html = '<div class="modal-overlay" onclick="closeUserDetail(event)">' +
+            '<div class="modal-box" onclick="event.stopPropagation()">' +
+            '<button class="close-btn" onclick="closeModal(this)">&times;</button>' +
+            '<h2>用户详情 — ' + escHtml(u.phone) + '</h2>' +
+
+            '<div class="detail-grid">' +
+              '<div class="item"><div class="k">ID</div><div class="v">' + u.id + '</div></div>' +
+              '<div class="item"><div class="k">手机号</div><div class="v">' + escHtml(u.phone) + '</div></div>' +
+              '<div class="item"><div class="k">邮箱</div><div class="v">' + escHtml(u.email || '-') + '</div></div>' +
+              '<div class="item"><div class="k">状态</div><div class="v" style="color:' + statusColor + '">' + statusText + '</div></div>' +
+              '<div class="item"><div class="k">注册时间</div><div class="v">' + escHtml(u.registered_at || '-') + '</div></div>' +
+              '<div class="item"><div class="k">最后登录</div><div class="v">' + escHtml(u.last_login_at || '-') + '</div></div>' +
+              '<div class="item"><div class="k">最后活跃</div><div class="v">' + escHtml(u.last_active_at || '-') + '</div></div>' +
+              '<div class="item"><div class="k">登录失败次数</div><div class="v">' + (u.login_fail_count || 0) + '</div></div>' +
+              '<div class="item"><div class="k">短信总数</div><div class="v">' + (u.sms_count || 0) + '</div></div>' +
+            '</div>' +
+
+            '<div style="text-align:right;margin-bottom:15px;">' +
+            '<div class="inline-flex" style="justify-content:flex-end;">';
+
+          if (canChangePwd) {
+            html += '<button class="action-btn warning" onclick="showChangeUserPwd(' + u.id + ')">更改密码</button> ';
+          }
+          if (canReport) {
+            html += '<button class="action-btn warning" onclick="closeModal(this);showCreateReport(' + u.id + ",'" + escJs(u.phone) + "'" + ')">提交报告</button> ';
+          }
+          if (canDelete) {
+            html += '<button class="action-btn danger" onclick="if(confirm(\'确定彻底删除此用户？\\n此操作不可恢复！\')){deleteUser(' + u.id + ');closeModal(this)}">彻底删除此用户</button>';
+          }
+
+          html += '</div>' +
+            '<h3 style="color:#1677ff;font-size:14px;margin-bottom:10px;">授权号码</h3>' +
+            '<div style="overflow-x:auto;margin-bottom:20px;">' +
+            '<table><thead><tr><th>授权号码</th><th>添加时间</th></tr></thead><tbody>' + authHtml + '</tbody></table>' +
+            '</div>' +
+
+            '<h3 style="color:#1677ff;font-size:14px;margin-bottom:10px;">最近短信</h3>' +
+            '<div style="margin-bottom:8px;display:flex;gap:8px;">' +
+            '<input type="text" id="userSmsSearch" placeholder="搜索短信内容..." style="flex:1;background:#1a1a2e;border:1.5px solid #0f3460;padding:8px 12px;border-radius:6px;color:#eee;font-size:13px;outline:none;">' +
+            '<button class="btn btn-sm" onclick="searchUserSms(' + userId + ')" style="padding:8px 16px;">搜索</button>' +
+            '</div>' +
+            '<div id="userSmsContainer" style="overflow-x:auto;">加载中...</div>' +
+            '<div class="pagination" id="userSmsPagination"></div>' +
+            '</div></div></div>';
+
+          let temp = document.createElement('div');
+          temp.innerHTML = html;
+          document.body.appendChild(temp.firstChild);
+          let searchInput = document.getElementById('userSmsSearch');
+          if (searchInput) {
+            searchInput.addEventListener('input', function() {
+              window._userSmsSearchTimer = window._userSmsSearchTimer || null;
+              clearTimeout(window._userSmsSearchTimer);
+              window._userSmsSearchTimer = setTimeout(function() {
+                searchUserSms(userId);
+              }, 400);
+            });
+          }
+          loadUserSms(userId, 0);
+        },
+        function (r) {
+          showConsoleMsg('error', r.message || '获取用户详情失败');
+        }
+      );
+    }
+
+    function loadUserSms(userId, page, search) {
+      let data = {user_id: userId, page: page, limit: 20};
+      if (search) data.search = search;
+      apiPostWithCookie('/api/admin/user/sms', data,
+        function (r) {
+          let container = document.getElementById('userSmsContainer');
+          if (!container) return;
+          if (!r.messages || r.messages.length === 0) {
+            container.innerHTML = '<div style="color:#8899aa;text-align:center;padding:15px;">暂无短信</div>';
+            document.getElementById('userSmsPagination').innerHTML = '';
+            return;
+          }
+          let html = '<table><thead><tr><th>ID</th><th>发件人</th><th>内容</th><th>接收时间</th><th>已读</th></tr></thead><tbody>';
+          r.messages.forEach(function (m) {
+            let readLabel = m.is_read ? '<span style="color:#52b788;">已读</span>' : '<span style="color:#1677ff;">未读</span>';
+            html += '<tr style="cursor:pointer;" onclick="showSmsDetail(' +
+              "'" + escJs(m.sender) + "'," +
+              "'" + escJs(m.content) + "'," +
+              "'" + escJs(m.received_at || m.created_at || '-') + "'" +
+              ')">' +
+              '<td>' + m.id + '</td>' +
+              '<td>' + escHtml(m.sender) + '</td>' +
+              '<td class="sms-content" title="' + escHtml(m.content) + '">' + escHtml(m.content) + '</td>' +
+              '<td>' + escHtml(m.received_at || m.created_at || '-') + '</td>' +
+              '<td>' + readLabel + '</td></tr>';
+          });
+          html += '</tbody></table>';
+          container.innerHTML = html;
+          let totalPages = Math.ceil(r.total / r.limit);
+          if (totalPages > 1) {
+            let phtml = '';
+            phtml += '<button ' + (page <= 0 ? 'disabled' : '') + ' onclick="loadUserSms(' + userId + ',' + (page - 1) + (search ? ",'" + escJs(search) + "'" : '') + ')">上一页</button>';
+            phtml += '<span class="page-info">第 ' + (page + 1) + ' / ' + totalPages + ' 页（共 ' + r.total + ' 条）</span>';
+            phtml += '<button ' + (page >= totalPages - 1 ? 'disabled' : '') + ' onclick="loadUserSms(' + userId + ',' + (page + 1) + (search ? ",'" + escJs(search) + "'" : '') + ')">下一页</button>';
+            document.getElementById('userSmsPagination').innerHTML = phtml;
+          } else {
+            document.getElementById('userSmsPagination').innerHTML = '';
+          }
+        }
+      );
+    }
+
+    function searchUserSms(userId) {
+      let searchInput = document.getElementById('userSmsSearch');
+      let q = searchInput ? searchInput.value.trim() : '';
+      loadUserSms(userId, 0, q);
+    }
+
+    function showChangeUserPwd(userId) {
+      let pwd = prompt('请输入新的用户密码（至少6位）：');
+      if (!pwd || pwd.length < 8) { showConsoleMsg('error', '密码至少8位'); return; }
+      apiPostWithCookie('/api/admin/user/change-password', {user_id: userId, new_password: pwd},
+        function (r) {
+          showConsoleMsg('success', r.message);
+        },
+        function (r) {
+          showConsoleMsg('error', r.message || '修改失败');
+        }
+      );
+    }
+
+    function showSmsDetail(sender, content, time) {
+      let overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+      overlay.innerHTML = '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<button class="close-btn" onclick="closeModal(this)">&times;</button>' +
+        '<h2>短信详情</h2>' +
+        '<div class="detail-grid">' +
+          '<div class="item"><div class="k">发件人</div><div class="v">' + escHtml(sender) + '</div></div>' +
+          '<div class="item"><div class="k">接收时间</div><div class="v">' + escHtml(time) + '</div></div>' +
+        '</div>' +
+        '<div style="background:#1a1a2e;border-radius:8px;padding:15px;margin-top:10px;word-break:break-word;white-space:pre-wrap;color:#eee;font-size:14px;line-height:1.6;">' + escHtml(content) + '</div>' +
+        '</div></div>';
+      document.body.appendChild(overlay);
+    }
+
+    function closeUserDetail(event) {
+      if (event && event.target.classList.contains('modal-overlay')) {
+        event.target.remove();
+      }
+    }
+
+    function closeModal(btn) {
+      let overlay = btn.closest('.modal-overlay');
+      if (overlay) overlay.remove();
+    }
+
+    function showCreateReport(pid, pphone) {
+      let overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+      overlay.innerHTML = '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<button class="close-btn" onclick="closeModal(this)">&times;</button>' +
+        '<h2>提交删除报告</h2>' +
+        '<div class="form-group">' +
+          '<label>目标用户</label>' +
+          '<select id="reportTargetUser">' +
+          '</select>' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label>报告原因</label>' +
+          '<select id="reportReason">' +
+            '<option value="法律原因">法律原因</option>' +
+            '<option value="隐私原因">隐私原因</option>' +
+            '<option value="骚扰/垃圾">骚扰/垃圾</option>' +
+            '<option value="违规内容">违规内容</option>' +
+            '<option value="其他">其他</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label>详细说明</label>' +
+          '<textarea id="reportDetail" placeholder="请详细描述需要删除此用户的原因..."></textarea>' +
+        '</div>' +
+        '<button class="btn" onclick="submitReport()">提交报告</button>' +
+        ' <span id="reportSubmitMsg" class="text-muted"></span>' +
+      '</div>';
+      document.body.appendChild(overlay);
+
+      apiPostWithCookie('/api/admin/users', {limit: 500}, function (r) {
+        let sel = document.getElementById('reportTargetUser');
+        if (!sel) return;
+        if (r.users) {
+          r.users.forEach(function (u) {
+            let opt = document.createElement('option');
+            opt.value = u.id;
+            opt.textContent = u.phone + ' (ID:' + u.id + ')';
+            if (u.id === pid) opt.selected = true;
+            sel.appendChild(opt);
+          });
+        }
+      });
+    }
+
+    function submitReport() {
+      let sel = document.getElementById('reportTargetUser');
+      let targetId = sel ? parseInt(sel.value) : 0;
+      let reason = document.getElementById('reportReason') ? document.getElementById('reportReason').value : '';
+      let detail = document.getElementById('reportDetail') ? document.getElementById('reportDetail').value : '';
+      if (!targetId) { showConsoleMsg('error', '请选择目标用户'); return; }
+      if (!reason) { showConsoleMsg('error', '请选择原因'); return; }
+      document.getElementById('reportSubmitMsg').textContent = '提交中...';
+      apiPostWithCookie('/api/admin/report/create', {target_user_id: targetId, reason: reason, detail: detail},
+        function (r) {
+          showConsoleMsg('success', r.message);
+          closeModal(document.querySelector('.modal-overlay button.close-btn'));
+          loadReports();
+        },
+        function (r) {
+          document.getElementById('reportSubmitMsg').textContent = r.message || '提交失败';
+        }
+      );
+    }
+
+    function loadReports() {
+      let status = document.getElementById('reportStatusFilter').value;
+      let data = {page: reportPage, limit: reportLimit};
+      if (status) data.status = status;
+      apiPostWithCookie('/api/admin/report/list', data, function (r) {
+        let tbody = document.getElementById('reportTableBody');
+        if (!r.reports || r.reports.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#8899aa;padding:20px;">暂无报告</td></tr>';
+          document.getElementById('reportPagination').innerHTML = '';
+          return;
+        }
+        let canResolve = checkLevelRequired(3);
+        let html = '';
+        r.reports.forEach(function (rep) {
+          let statusColor = rep.status === 'pending' ? 'pending' : (rep.status === 'approved' ? 'approved' : 'rejected');
+          let statusText = rep.status === 'pending' ? '待处理' : (rep.status === 'approved' ? '已批准' : '已驳回');
+          html += '<tr>' +
+            '<td>#' + rep.id + '</td>' +
+            '<td>' + escHtml(rep.reporter) + '</td>' +
+            '<td>' + escHtml(rep.target_phone) + (rep.target_email ? ' (' + escHtml(rep.target_email) + ')' : '') + '</td>' +
+            '<td><span class="report-reason ' + statusColor + '">' + escHtml(rep.reason) + '</span></td>' +
+            '<td style="max-width:150px;" title="' + escHtml(rep.detail) + '">' + escHtml(rep.detail || '-') + '</td>' +
+            '<td><span class="report-reason ' + statusColor + '">' + statusText + '</span></td>' +
+            '<td>' + escHtml(rep.created_at) + '</td>' +
+            '<td>' + escHtml(rep.resolved_by || '-') + '</td>' +
+            '<td>';
+          if (canResolve && rep.status === 'pending') {
+            html += '<button class="action-btn success" onclick="resolveReport(' + rep.id + ",'approve'" + ')">批准</button> ';
+            html += '<button class="action-btn danger" onclick="resolveReport(' + rep.id + ",'reject'" + ')">驳回</button> ';
+          }
+          if (canResolve) {
+            html += '<button class="action-btn info" onclick="deleteReport(' + rep.id + ')">删除</button>';
+          }
+          html += '</td></tr>';
+        });
+        tbody.innerHTML = html;
+        renderReportPagination(r.total, r.page, r.limit);
+      });
+    }
+
+    function renderReportPagination(total, page, limit) {
+      let el = document.getElementById('reportPagination');
+      let totalPages = Math.ceil(total / limit);
+      if (totalPages <= 1) { el.innerHTML = ''; return; }
+      let html = '';
+      html += '<button ' + (page <= 0 ? 'disabled' : '') + ' onclick="reportPage=' + (page - 1) + ';loadReports()">上一页</button>';
+      html += '<span class="page-info">第 ' + (page + 1) + ' / ' + totalPages + ' 页（共 ' + total + ' 条）</span>';
+      html += '<button ' + (page >= totalPages - 1 ? 'disabled' : '') + ' onclick="reportPage=' + (page + 1) + ';loadReports()">下一页</button>';
+      el.innerHTML = html;
+    }
+
+    function resolveReport(reportId, action) {
+      let msg = action === 'approve' ? '批准此报告后将允许删除用户，确定？' : '确定驳回此报告？';
+      if (!confirm(msg)) return;
+      let resolution = prompt('处理备注（可选）：');
+      apiPostWithCookie('/api/admin/report/resolve', {report_id: reportId, action: action, resolution: resolution || ''},
+        function (r) {
+          showConsoleMsg('success', r.message);
+          loadReports();
+          loadReportsCount();
+        },
+        function (r) {
+          showConsoleMsg('error', r.message || '处理失败');
+        }
+      );
+    }
+
+    function deleteReport(reportId) {
+      if (!confirm('确定删除此报告？')) return;
+      apiPostWithCookie('/api/admin/report/delete', {report_id: reportId},
+        function (r) {
+          showConsoleMsg('success', r.message);
+          loadReports();
+          loadReportsCount();
+        },
+        function (r) {
+          showConsoleMsg('error', r.message || '删除失败');
+        }
+      );
+    }
+
+    function loadManagers() {
+      apiPostWithCookie('/api/admin/managers', {}, function (r) {
+        let tbody = document.getElementById('managerTableBody');
+        if (!r.managers || r.managers.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#8899aa;padding:20px;">暂无管理员</td></tr>';
+          return;
+        }
+        let canDelete = checkLevelRequired(2);
+        let html = '';
+        r.managers.forEach(function (m) {
+          let dotClass = m.online ? 'online' : 'offline';
+          let statusText = m.online ? '在线' : '离线';
+          let levelTag = '<span class="level-tag l' + m.level + '">' + escHtml(m.levelName) + '</span>';
+          let actions = '';
+          if (canDelete && m.username !== getCurrentUsername()) {
+            actions = '<button class="action-btn danger" onclick="deleteManager(\'' + escJs(m.username) + '\')">删除</button>';
+          } else if (m.username === getCurrentUsername()) {
+            actions = '<span class="text-muted">当前账号</span>';
+          }
+          html += '<tr>' +
+            '<td>' + escHtml(m.username) + '</td>' +
+            '<td>' + levelTag + '</td>' +
+            '<td><span class="online-dot ' + dotClass + '"></span>' + statusText + '</td>' +
+            '<td>' + escHtml(m.created_at || '-') + '</td>' +
+            '<td>' + escHtml(m.created_by || '-') + '</td>' +
+            '<td>' + actions + '</td>' +
+            '</tr>';
+        });
+        tbody.innerHTML = html;
+      });
+    }
+
+    function getCurrentUsername() {
+      return currentUsername;
+    }
+
+    function showCreateManager() {
+      if (!checkLevelRequired(2)) {
+        showConsoleMsg('error', '权限不足，仅中级/超级管理员可创建管理账号');
+        return;
+      }
+      let canCreateL3 = checkLevelRequired(3);
+      let maxLevel = adminLevel;
+      let overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+      overlay.innerHTML = '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<button class="close-btn" onclick="closeModal(this)">&times;</button>' +
+        '<h2>创建管理员</h2>' +
+        '<div class="form-group">' +
+          '<label>用户名</label>' +
+          '<input type="text" id="newManagerUser" placeholder="用户名" autocomplete="off">' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label>密码（需含大小写字母、数字、特殊字符，至少8位）</label>' +
+          '<input type="password" id="newManagerPass" placeholder="密码" autocomplete="off">' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label>等级</label>' +
+          '<select id="newManagerLevel"></select>' +
+        '</div>' +
+        '<div class="inline-flex">' +
+          '<button class="btn" onclick="submitCreateManager()">创建</button>' +
+          '<span id="createManagerMsg" class="text-muted"></span>' +
+        '</div>' +
+      '</div>';
+      let select = document.getElementById('newManagerLevel');
+      for (let i = 1; i <= maxLevel; i++) {
+        if (i === 3 && !canCreateL3) continue;
+        if (i === 3 && adminLevel === 2) continue;
+        let opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = levelNames[i];
+        select.appendChild(opt);
+      }
+      document.body.appendChild(overlay);
+    }
+
+    function submitCreateManager() {
+      let username = document.getElementById('newManagerUser').value.trim();
+      let password = document.getElementById('newManagerPass').value;
+      let level = parseInt(document.getElementById('newManagerLevel').value);
+      if (!username) { document.getElementById('createManagerMsg').textContent = '请输入用户名'; return; }
+      if (!password) { document.getElementById('createManagerMsg').textContent = '请输入密码'; return; }
+      document.getElementById('createManagerMsg').textContent = '创建中...';
+      apiPostWithCookie('/api/admin/manager/create', {username: username, password: password, level: level},
+        function (r) {
+          showConsoleMsg('success', r.message);
+          closeModal(document.querySelector('.modal-overlay button.close-btn'));
+          loadManagers();
+        },
+        function (r) {
+          document.getElementById('createManagerMsg').textContent = r.message || '创建失败';
+        }
+      );
+    }
+
+    function deleteManager(username) {
+      if (!confirm('确定要删除管理员 ' + username + ' 吗？')) return;
+      apiPostWithCookie('/api/admin/manager/delete', {username: username},
+        function (r) {
+          showConsoleMsg('success', r.message);
+          loadManagers();
+        },
+        function (r) {
+          showConsoleMsg('error', r.message || '删除失败');
+        }
+      );
+    }
+
+    function escJs(s) {
+      if (!s) return '';
+      return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+
+    function loadSystem() {
+      apiPostWithCookie('/api/admin/stats', {}, function (r) {
+        let s = r.stats;
+        let html = '';
+        let items = [
+          {k:'服务器时间', v:s.server_time},
+          {k:'运行时长', v:s.uptime},
+          {k:'用户端口', v:s.user_port},
+          {k:'管理端口', v:s.admin_port},
+          {k:'Python版本', v:s.python_version},
+          {k:'操作系统', v:s.platform},
+          {k:'活跃用户', v:s.active_users},
+          {k:'总注册用户', v:s.total_users},
+          {k:'日志总数', v:s.log_stats.total},
+          {k:'今日日志', v:s.log_stats.today}
+        ];
+        items.forEach(function (item) {
+          html += '<div class="item"><div class="k">' + item.k + '</div><div class="v">' + escHtml(String(item.v)) + '</div></div>';
+        });
+        document.getElementById('sysInfo').innerHTML = html;
+      });
+    }
+
+    function loadMailConfig() {
+      apiPostWithCookie('/api/admin/mail-config', {}, function (r) {
+        if (r.config) {
+          let c = r.config;
+          document.getElementById('mailHost').value = c.host || '';
+          document.getElementById('mailPort').value = c.port || 465;
+          document.getElementById('mailUser').value = c.user || '';
+          document.getElementById('mailPass').value = '';
+          document.getElementById('mailFromAddr').value = c.from_addr || '';
+          document.getElementById('mailFromName').value = c.from_name || '';
+          document.getElementById('mailTls').checked = c.tls || false;
+          document.getElementById('mailVerifySsl').checked = c.verify_ssl !== false;
+          document.getElementById('mailStatus').textContent = '已读取当前配置';
+        }
+        if (r._current) {
+          let cur = r._current;
+          let info = '当前生效: ' + cur.host + ':' + cur.port;
+          if (cur.user) info += ' (已登录)';
+          info += ' | TLS: ' + (cur.tls ? '开启' : '关闭');
+          info += ' | SSL验证: ' + (cur.verify_ssl !== false ? '开启' : '关闭');
+          document.getElementById('mailStatus').textContent = info;
+        }
+      });
+    }
+
+    function saveMailConfig() {
+      let mailPass = document.getElementById('mailPass').value;
+      let data = {
+        save: true,
+        host: document.getElementById('mailHost').value,
+        port: parseInt(document.getElementById('mailPort').value) || 25,
+        user: document.getElementById('mailUser').value,
+        from_addr: document.getElementById('mailFromAddr').value,
+        from_name: document.getElementById('mailFromName').value,
+        tls: document.getElementById('mailTls').checked,
+        verify_ssl: document.getElementById('mailVerifySsl').checked
+      };
+      if (mailPass) data.pass = mailPass;
+      if (!data.host) { showConsoleMsg('error', '请输入SMTP服务器地址'); return; }
+      apiPostWithCookie('/api/admin/mail-config', data, function () {
+        showConsoleMsg('success', '邮件配置已保存');
+        document.getElementById('mailStatus').textContent = '配置已保存，下次发邮件生效';
+        loadMailConfig();
+      }, function (r) {
+        showConsoleMsg('error', r.message || '保存失败');
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      apiPostWithCookie('/api/admin/check', {}, function (r) {
+        if (r.loggedIn) {
+          isAdmin = true;
+          adminLevel = r.level || 3;
+          currentUsername = r.username || '';
+          document.getElementById('loginOverlay').style.display = 'none';
+          document.getElementById('consoleMain').style.display = 'block';
+          updateLevelUI();
+          updateTabVisibility();
+          loadAll();
+        }
+      });
+    });
+
+    document.getElementById('adminPass').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') adminLogin();
+    });
+    document.getElementById('adminUser').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') document.getElementById('adminPass').focus();
+    });
+
+    document.getElementById('tabBar').addEventListener('click', function (e) {
+      let btn = e.target.closest('button');
+      if (!btn) return;
+      if (btn.classList.contains('disabled-tab')) {
+        e.preventDefault();
+        showConsoleMsg('error', '等级不足，无法访问此功能');
+        return false;
+      }
+      let tab = btn.getAttribute('data-tab');
+      if (tab) switchTab(tab);
+    });
+
+    let modPriorities = {};
+
+    function showModMsg(type, text) {
+      let el = document.getElementById('modMsg');
+      el.className = 'message ' + type;
+      el.textContent = text;
+      el.style.display = 'block';
+      setTimeout(function () { el.style.display = 'none'; }, 3000);
+    }
+
+    function loadModFiles() {
+      apiPostWithCookie('/api/mod/status', {}, function (r) {
+        if (!r.files) { showModMsg('error', '无法获取 mod 文件列表'); return; }
+        let html = '';
+        r.files.forEach(function (f) {
+          let filepath = f.path;
+          let prio = modPriorities[filepath] || '';
+          let statusText = prio === 'disabled' ? '禁用' : prio === 'builtin' ? '使用内置' : '活跃';
+          let statusClass = prio === 'disabled' ? 'log-status fail' : prio === 'builtin' ? 'log-status' : 'log-status success';
+          html += '<tr>' +
+            '<td>' + escHtml(filepath) + '</td>' +
+            '<td>' + escHtml(f.language) + '</td>' +
+            '<td>' + escHtml(f.size || '-') + '</td>' +
+            '<td><span class="' + statusClass + '">' + statusText + '</span></td>' +
+            '<td>' +
+              '<select onchange="setModPriority(\'' + escJs(filepath) + '\', this.value)" style="background:#1a1a2e;border:1px solid #0f3460;border-radius:4px;color:#eee;padding:3px 6px;font-size:12px;">' +
+                '<option value="mod"' + (prio === '' || prio === 'mod' ? ' selected' : '') + '>mod</option>' +
+                '<option value="builtin"' + (prio === 'builtin' ? ' selected' : '') + '>内置</option>' +
+                '<option value="disabled"' + (prio === 'disabled' ? ' selected' : '') + '>禁用</option>' +
+              '</select>' +
+            '</td>' +
+            '<td><button class="action-btn danger" onclick="deleteModFile(\'' + escJs(filepath) + '\')">删除</button></td>' +
+            '</tr>';
+        });
+        document.getElementById('modTableBody').innerHTML = html;
+      });
+      loadModPriorities();
+    }
+
+    function loadModPriorities() {
+      apiPostWithCookie('/api/admin/mod/priorities', {}, function (r) {
+        modPriorities = r.priorities || {};
+      });
+    }
+
+    function setModPriority(path, source) {
+      apiPostWithCookie('/api/admin/mod/priorities', {path: path, source: source}, function (r) {
+        if (r.success) showModMsg('success', r.message);
+        else showModMsg('error', r.message);
+        loadModFiles();
+      });
+    }
+
+    function clearModPriorities() {
+      if (!confirm('确定清除所有优先级配置？')) return;
+      apiPostWithCookie('/api/admin/mod/priorities/clear', {}, function (r) {
+        if (r.success) showModMsg('success', r.message);
+        else showModMsg('error', r.message);
+        loadModFiles();
+      });
+    }
+
+    function reloadMod() {
+      apiPostWithCookie('/api/admin/mod/reload', {}, function (r) {
+        if (r.success) showModMsg('success', r.message);
+        else showModMsg('error', r.message);
+        loadModFiles();
+      });
+    }
+
+    function onModFileSelected() {
+      let input = document.getElementById('modFileInput');
+      let statusEl = document.getElementById('modUploadStatus');
+      if (input.files && input.files[0]) {
+        let nameEl = document.getElementById('modUploadFilename');
+        if (!nameEl.value) nameEl.value = input.files[0].name;
+        statusEl.textContent = '已选择: ' + input.files[0].name + ' (' + (input.files[0].size / 1024).toFixed(1) + 'KB)';
+      }
+    }
+
+    function uploadModFile() {
+      let input = document.getElementById('modFileInput');
+      let filename = document.getElementById('modUploadFilename').value.trim();
+      let subdir = document.getElementById('modUploadSubdir').value;
+      let btn = document.getElementById('modUploadBtn');
+
+      if (!filename) { showModMsg('error', '请输入文件名'); return; }
+      if (!input.files || !input.files[0]) { showModMsg('error', '请选择文件'); return; }
+
+      btn.disabled = true;
+      btn.textContent = '上传中...';
+
+      let reader = new FileReader();
+      reader.onload = function (e) {
+        let base64Content = e.target.result.split(',')[1];
+        apiPostWithCookie('/api/admin/mod/upload', {
+          filename: filename,
+          subdir: subdir,
+          content: base64Content
+        }, function (r) {
+          btn.disabled = false;
+          btn.textContent = '上传';
+          if (r.success) {
+            showModMsg('success', r.message);
+            input.value = '';
+            document.getElementById('modUploadFilename').value = '';
+            document.getElementById('modUploadStatus').textContent = '';
+            loadModFiles();
+          } else {
+            showModMsg('error', r.message);
+          }
+        });
+      };
+      reader.onerror = function () {
+        btn.disabled = false;
+        btn.textContent = '上传';
+        showModMsg('error', '文件读取失败');
+      };
+      reader.readAsDataURL(input.files[0]);
+    }
+
+    function deleteModFile(path) {
+      if (!confirm('确定删除 ' + path + '?')) return;
+      apiPostWithCookie('/api/admin/mod/delete', {path: path}, function (r) {
+        if (r.success) showModMsg('success', r.message);
+        else showModMsg('error', r.message);
+        loadModFiles();
+      });
+    }
+
+    function scanModFiles() {
+      let btn = document.getElementById('scanBtn');
+      btn.disabled = true;
+      btn.textContent = '扫描中...';
+      document.getElementById('scanResult').style.display = 'none';
+      apiPostWithCookie('/api/admin/mod/scan', {}, function (r) {
+        btn.disabled = false;
+        btn.textContent = '安全扫描';
+        if (!r.success) { showModMsg('error', r.message); return; }
+        let summaryEl = document.getElementById('scanSummary');
+        let detailsEl = document.getElementById('scanDetails');
+        let gradeColor = r.grade === 'S' ? '#52b788' : r.grade === 'A' ? '#b8d4b0' : r.grade === 'B' ? '#f0c040' : r.grade === 'C' ? '#f09040' : '#e94560';
+        let html = '<div style="background:#0f3460;padding:10px 15px;border-radius:8px;color:#fff;">' +
+          '<span style="font-size:20px;font-weight:bold;color:' + gradeColor + ';">' + r.grade + '</span>' +
+          ' 评分 <b>' + r.total_score + '</b> 分 | 文件 ' + r.files_scanned + ' 个' +
+          ' | <span style="color:#e94560;">' + (r.summary.high || 0) + ' 高</span>' +
+          ' <span style="color:#f0c040;">' + (r.summary.medium || 0) + ' 中</span>' +
+          ' <span style="color:#8899aa;">' + (r.summary.low || 0) + ' 低</span>' +
+          '</div>';
+        summaryEl.innerHTML = html;
+
+        let detHtml = '';
+        if (r.files && r.files.length) {
+          r.files.forEach(function (f) {
+            if (f.highest >= 8) let sevColor = '#e94560', sevLabel = '危险';
+            else if (f.highest >= 5) sevColor = '#f0c040', sevLabel = '警告';
+            else if (f.highest >= 2) sevColor = '#8899aa', sevLabel = '注意';
+            else sevColor = '#52b788', sevLabel = '安全';
+            detHtml += '<div style="padding:6px 10px;margin:4px 0;border-left:3px solid ' + sevColor + ';background:#16213e;border-radius:4px;font-size:13px;">' +
+              '<span style="color:' + sevColor + ';font-weight:bold;">[' + sevLabel + ']</span> ' +
+              escHtml(f.relpath) +
+              ' <span style="color:#8899aa;">(评分 ' + f.score + ', ' + f.high + '高/' + f.medium + '中/' + f.low + '低)</span>';
+            if (f.issues && f.issues.length) {
+              detHtml += '<div style="margin-left:16px;font-size:12px;color:#aaa;">';
+              f.issues.slice(0, 5).forEach(function (iss) {
+                let iw = '#' + iss[2];
+                let ic = iss[1] >= 8 ? '#e94560' : iss[1] >= 5 ? '#f0c040' : '#8899aa';
+                detHtml += '<div style="margin:2px 0;"><span style="color:' + ic + ';">></span> ' + escHtml(iss[2]) + (iss[0] ? ' <span style="color:#666;">(行' + iss[0] + ')</span>' : '') + '</div>';
+              });
+              if (f.issues.length > 5) detHtml += '<div style="color:#666;">... 还有 ' + (f.issues.length - 5) + ' 个</div>';
+              detHtml += '</div>';
+            }
+            detHtml += '</div>';
+          });
+        } else {
+          detHtml = '<div style="color:#52b788;font-size:14px;">[OK] 所有文件安全</div>';
+        }
+        detailsEl.innerHTML = detHtml;
+        document.getElementById('scanResult').style.display = 'block';
+      });
+    }
+
+  </script>
+</body>
+</html>

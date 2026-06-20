@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>注册 - 短信转网页</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/icon.png">
+  <script src="/js/i18n.js" defer></script>
+  <script src="/js/theme.js" defer></script>
+</head>
+<body>
+  <div class="container" style="position:relative;">
+    <div class="project-logo"><img src="/icon.png" alt=""></div>
+    <select id="langSwitcher" style="position:absolute;top:12px;right:12px;font-size:11px;padding:2px 4px;border-radius:4px;border:1px solid var(--theme-border,#e0e0e0);background:var(--theme-bg-card,#fff);color:var(--theme-text,#333);cursor:pointer;" onchange="switchLang(this.value)"></select>
+    <h1>注册账号</h1>
+    <p class="subtitle">输入手机号和邮箱，完成注册</p>
+
+    <div id="message" class="message"></div>
+
+    <form id="registerForm" autocomplete="off">
+      <div class="form-group">
+        <label for="phone">手机号</label>
+        <input type="tel" id="phone" name="phone" placeholder="请输入11位手机号" maxlength="11" pattern="1[3-9]\d{9}" autocomplete="off">
+      </div>
+
+      <div class="form-group">
+        <label for="email">邮箱</label>
+        <input type="email" id="email" name="email" placeholder="请输入邮箱地址" autocomplete="off">
+      </div>
+
+      <button type="submit" class="btn" id="submitBtn" data-original-text="发送验证码">发送验证码</button>
+    </form>
+
+    <div class="links">
+      已有账号？<a href="/login.html">去登录</a>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script>
+    function switchLang(code) {
+      i18n.setLang(code);
+      i18n.applyLangToPage();
+      var sel = document.getElementById('langSwitcher');
+      if (sel) sel.value = code;
+    }
+    function initLangSwitcher() {
+      var sel = document.getElementById('langSwitcher');
+      if (!sel) return;
+      var langs = i18n.getLanguages();
+      var current = i18n.getLang();
+      sel.innerHTML = '';
+      langs.forEach(function(l) {
+        var opt = document.createElement('option');
+        opt.value = l.code;
+        opt.textContent = l.name;
+        if (l.code === current) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+    var savedLang = i18n.getLang();
+    if (savedLang && savedLang !== 'zh') {
+      i18n.setLang(savedLang);
+    }
+    i18n.applyLangToPage();
+    initLangSwitcher();
+
+    let messageEl = document.getElementById('message');
+    let form = document.getElementById('registerForm');
+    let submitBtn = document.getElementById('submitBtn');
+    let phoneInput = document.getElementById('phone');
+    let emailInput = document.getElementById('email');
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      hideMessage(messageEl);
+
+      let phone = phoneInput.value.trim();
+      let email = emailInput.value.trim();
+
+      if (!phone) {
+        showMessage(messageEl, 'error', '请输入手机号');
+        phoneInput.focus();
+        return;
+      }
+
+      if (!/^1[3-9]\d{9}$/.test(phone)) {
+        showMessage(messageEl, 'error', '手机号格式不正确');
+        phoneInput.focus();
+        return;
+      }
+
+      if (!email) {
+        showMessage(messageEl, 'error', '请输入邮箱');
+        emailInput.focus();
+        return;
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showMessage(messageEl, 'error', '邮箱格式不正确');
+        emailInput.focus();
+        return;
+      }
+
+      setLoading(submitBtn, true);
+
+      apiPost('/api/auth/register/send-code', {
+        phone: phone,
+        email: email
+      }, function (result) {
+        setLoading(submitBtn, false);
+        showMessage(messageEl, 'success', '验证码已发送');
+        setTimeout(function () {
+          window.location.href = '/verify.html?key=' + encodeURIComponent(result.key) + '&phone=' + encodeURIComponent(phone);
+        }, 1000);
+      }, function (result) {
+        setLoading(submitBtn, false);
+        showMessage(messageEl, 'error', result.message || '发送失败，请重试');
+      });
+    });
+
+    phoneInput.addEventListener('input', function () {
+      this.value = this.value.replace(/\D/g, '');
+    });
+  </script>
+</body>
+</html>

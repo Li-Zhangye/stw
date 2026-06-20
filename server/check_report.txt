@@ -1,0 +1,52 @@
+==========================================================
+  短信转网页 === 环境与安全检测报告
+==========================================================
+  检测时间: 2026-06-19 15:45:45
+  操作系统: linux (aarch64)
+  项目路径: /root/stwEP
+----------------------------------------------------------
+  问题统计: 0 个严重 + 16 个警告
+----------------------------------------------------------
+
+【文件权限】
+  [!] /root/stwEP/server/data/daemon.json 对其他用户可读
+      解决: 执行: chmod 600 /root/stwEP/server/data/daemon.json
+
+【XSS/输出安全】
+  [!] public/console.html:724 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:774 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:787 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:887 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:934 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:941 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:1096 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:1109 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:1170 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:1276 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:1396 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:1511 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/console.html:1539 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+  [!] public/index.html:438 — innerHTML 赋值非纯静态字符串
+      解决: 确认该变量内容已通过 escHtml() 构建，或直接使用 escHtml() 包裹
+
+【Android 编译】
+  [!] Java 未安装
+      解决: apt install openjdk-17-jdk
+
+----------------------------------------------------------
+  环境状态: PASS 正常
+  启动命令: python3 server/server.py
+==========================================================

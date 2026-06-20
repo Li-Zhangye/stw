@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  sms2web:
+    build: .
+    image: sms2web:latest
+    container_name: sms2web
+    restart: unless-stopped
+    ports:
+      - "${USER_PORT:-19672}:19672"
+      - "${ADMIN_PORT:-19673}:19673"
+    environment:
+      - DATA_DIR=/data
+      - MOD_DIR=/mod
+      - USER_PORT=${USER_PORT:-19672}
+      - ADMIN_PORT=${ADMIN_PORT:-19673}
+    volumes:
+      - sms2web_data:/data
+      - sms2web_mod:/mod
+
+volumes:
+  sms2web_data:
+  sms2web_mod:

@@ -1,0 +1,21 @@
+{
+  "name": "短信转网页 官方 Mod 集合",
+  "version": "1.0.0",
+  "author": "SMS2Web Team",
+  "description": "短信转网页官方示例 Mod 文件",
+  "license": "MIT",
+  "minimum_core_version": "1.0.0",
+  "dependencies": {},
+  "files": [
+    "public/index.html",
+    "public/custom.css",
+    "server/my_plugin.py",
+    "plugins/config.json",
+    "plugins/script.py",
+    "plugins/script.js",
+    "plugins/test.php",
+    "plugins/deploy.sh",
+    "plugins/hello.c",
+    "plugins/template.html"
+  ]
+}
