@@ -78,7 +78,7 @@ docker run -d --name stw -p 19672:19672 -p 19673:19673 ghcr.io/li-zhangye/stw:la
 ```
 stwEP/
 ├── install.sh          # 一键安装脚本（全自动）
-├── stw                 # 命令行管理工具
+├── stw                 # 服务管理工具（start/stop/status）
 ├── Dockerfile          # 多架构 Docker 构建
 ├── docker-compose.yml  # Docker Compose 编排
 ├── README.md           # 本文档
@@ -214,22 +214,22 @@ docker compose up -d
 ## 常见问题
 
 **Q: 安装后如何找到管理员信息？**
-A: 安装脚本末尾会打印管理员手机号和密码。如果忘了，运行 `./stw` → 菜单 10 添加新管理员。
+A: 安装脚本末尾会打印管理员手机号和密码。如果忘了，通过 Web 管理后台 `http://<IP>:<管理端口>/console.html` 登录后可查看或添加管理员。
 
 **Q: 端口被占用怎么办？**
-A: 运行 `./stw` → 菜单 9 重置端口，或设置环境变量 `FORCE_USER_PORT=19672 FORCE_ADMIN_PORT=19673`。
+A: 设置环境变量 `FORCE_USER_PORT=19672 FORCE_ADMIN_PORT=19673` 后重启服务。
 
 **Q: 如何开启 HTTPS？**
-A: 运行 `./stw` → 菜单 7，脚本会自动用 openssl 生成自签名证书。首次生成后永久有效（10 年）。
+A: 通过 Web 管理后台「系统设置」可开启 SSL，服务器会自动用 openssl 生成自签名证书。首次生成后永久有效（10 年）。
 
 **Q: 用户可以注册吗？**
-A: 默认开放注册。运行 `./stw` → 菜单 8 可关闭注册，仅允许管理员后台添加。
+A: 默认开放注册。通过 Web 管理后台「系统设置」可关闭注册。
 
 **Q: 安卓 App 在哪里下载？**
 A: 安卓源代码在 `mobile/SmsToWeb/`，需用 Android Studio 编译。编译后的 APK 位于 `mobile/SmsToWeb/apk/stw.apk`。
 
 **Q: 如何修改短信列表的样式/主题？**
-A: 运行 `./stw` → 菜单 15 进入主题配置，支持颜色、圆角、字体、深色模式等。Android App 的设置中也有主题选项。
+A: 通过 Web 管理后台「主题设置」可配置颜色、圆角、字体、深色模式等。Android App 的设置中也有主题选项。
 
 **Q: 支持多少种图片/字体格式？**
 A: 图片 19 种（JPEG/PNG/GIF/WebP/AVIF/BMP/TIFF/SVG/HEIC 等），字体 6 种（TTF/OTF/WOFF/WOFF2/EOT/SFNT）。可通过管理 API 上传自定义图标和字体。
@@ -375,7 +375,7 @@ docker compose up -d
 ```
 stwEP/
 ├── install.sh          # One-click install script
-├── stw                 # CLI management tool
+├── stw                 # Service management (start/stop/status)
 ├── Dockerfile          # Multi-arch Docker build
 ├── docker-compose.yml  # Docker Compose
 ├── server/             # Python backend
@@ -407,22 +407,22 @@ stwEP/
 ## FAQ
 
 **Q: How do I find the admin credentials after install?**
-A: The install script prints them at the end. If forgotten, run `./stw` → menu 10 to add a new admin.
+A: The install script prints them at the end. If forgotten, log into the web admin console at `http://<IP>:<admin_port>/console.html` to view or add admins.
 
 **Q: Ports are occupied?**
-A: Run `./stw` → menu 9 to reset ports, or set `FORCE_USER_PORT` and `FORCE_ADMIN_PORT` env vars.
+A: Set `FORCE_USER_PORT` and `FORCE_ADMIN_PORT` env vars and restart.
 
 **Q: How to enable HTTPS?**
-A: Run `./stw` → menu 7. The script auto-generates a self-signed certificate (10-year validity).
+A: Go to the web admin console → System Settings → enable SSL. The server auto-generates a self-signed certificate (10-year validity).
 
 **Q: Can I disable user registration?**
-A: Yes, run `./stw` → menu 8. Only admins can then add users from the console.
+A: Yes, from the web admin console → System Settings. Only admins can then add users.
 
 **Q: Where is the Android APK?**
 A: Source code is in `mobile/SmsToWeb/`. Build with Android Studio or use the prebuilt APK at `mobile/SmsToWeb/apk/stw.apk`.
 
 **Q: How to customize the theme?**
-A: Run `./stw` → menu 15 for web themes, or use the Android app's theme settings.
+A: Use the web admin console → Theme Settings, or the Android app's theme settings.
 
 **Q: What image/font formats are supported?**
 A: 19 image types (JPEG/PNG/GIF/WebP/AVIF/BMP/TIFF/SVG/HEIC) and 6 font types (TTF/OTF/WOFF/WOFF2/EOT/SFNT).

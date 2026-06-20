@@ -1,224 +1,42 @@
 #!/usr/bin/env bash
-# ==============================================================
-#  stw - 短信转网页 命令行管理工具（类似宝塔 bt 命令）
-#  用法: stw [选项编号]  或  stw 直接进入交互菜单
-# ==============================================================
-set -e
+# stw - 短信转网页 服务管理工具
+# 用法: stw <command>
+# 命令: start, stop, restart, status
 
-# paths
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
 STW_DIR="${STW_DIR:-$SCRIPT_DIR}"
 SERVER_PY="$STW_DIR/server/server.py"
 DATA_DIR="${DATA_DIR:-$STW_DIR/tmp/data}"
 MOD_DIR="${MOD_DIR:-$STW_DIR/mod}"
-MANAGERS="$DATA_DIR/managers.json"
-CONFIG_FILE="$DATA_DIR/config.json"
 PID_FILE="$STW_DIR/tmp/server.pid"
 DAEMON_PID_FILE="$DATA_DIR/daemon.pid"
 LOG_DIR="$STW_DIR/tmp"
 SERVER_LOG="$LOG_DIR/server.log"
 DAEMON_LOG="$LOG_DIR/daemon.log"
-OS_RELEASE="/etc/os-release"
 
-if [ -t 1 ]; then
-    RED=$(printf '\033[91m'); GREEN=$(printf '\033[92m'); YELLOW=$(printf '\033[93m')
-    CYAN=$(printf '\033[96m'); BOLD=$(printf '\033[1m'); RESET=$(printf '\033[0m')
-else
-    RED=''; GREEN=''; YELLOW=''; CYAN=''; BOLD=''; RESET=''
-fi
+[ -t 1 ] && { BOLD='\033[1m'; RED='\033[91m'; GREEN='\033[92m'; YELLOW='\033[93m'; CYAN='\033[96m'; RESET='\033[0m'; } || { BOLD=''; RED=''; GREEN=''; YELLOW=''; CYAN=''; RESET=''; }
 ok()   { echo "  [OK] $1"; }
-fail() { printf "  %s[FAIL]%s %s\n" "$RED" "$RESET" "$1"; }
+fail() { printf "  ${RED}[FAIL]${RESET} %s\n" "$1"; }
 warn() { echo "  [!] $1"; }
 info() { echo "  [i] $1"; }
 
-# dependencies
 PYTHON=$(command -v python3 || command -v python || true)
-[ -z "$PYTHON" ] && { fail "Python 未安装"; exit 1; }
+[ -z "$PYTHON" ] && { fail "Python not found"; exit 1; }
 
-# -- 工具函数 --
-_read_json() {
-    local f="$1" key="$2"
-    [ ! -f "$f" ] && { echo ""; return; }
-    local tmpf=$(mktemp /tmp/stw_read.XXXXXX 2>/dev/null) || tmpf="/tmp/stw_read.$$"
-    printf '%s' "$key" > "$tmpf"
-    $PYTHON -c "import json; k=open('$tmpf','r').read(); d=json.load(open('$f')); print(d.get(k,''))" 2>/dev/null || { rm -f "$tmpf"; echo ""; return; }
-    rm -f "$tmpf"
+_load_server_info() {
+    local f="$DATA_DIR/server_info.json"
+    [ ! -f "$f" ] && { SERVER_INFO=""; return; }
+    SERVER_INFO=$($PYTHON -c "import json; print(json.dumps(json.load(open('$f'))))" 2>/dev/null || echo "")
 }
 
-_write_json() {
-    local f="$1" key="$2" val="$3"
-    mkdir -p "$(dirname "$f")"
-    local tmpf=$(mktemp /tmp/stw_write.XXXXXX 2>/dev/null) || tmpf="/tmp/stw_write.$$"
-    printf '%s' "$val" > "$tmpf"
-    $PYTHON -c "
-import json, sys
-f=sys.argv[1]; k=sys.argv[2]
-val = open(sys.argv[3], 'r').read()
-try:
-    d=json.load(open(f))
-except:
-    d={}
-try:
-    d[k]=json.loads(val)
-except:
-    d[k]=val
-json.dump(d, open(f,'w'), indent=2, ensure_ascii=False)
-" "$f" "$key" "$tmpf" 2>/dev/null || { warn "写入 $f 失败"; rm -f "$tmpf"; return 1; }
-    rm -f "$tmpf"
+_server_info_val() {
+    local key="$1"
+    [ -z "$SERVER_INFO" ] && { echo ""; return; }
+    $PYTHON -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get('$key',''))" "$SERVER_INFO" 2>/dev/null || echo ""
 }
 
-_get_managers() {
-    [ ! -f "$MANAGERS" ] && return
-    local tmpf=$(mktemp /tmp/stw_mgr.XXXXXX 2>/dev/null) || tmpf="/tmp/stw_mgr.$$"
-    printf '%s' "$MANAGERS" > "$tmpf"
-    $PYTHON -c "
-import json
-p = open('$tmpf','r').read()
-d=json.load(open(p))
-for m in d:
-    print(m.get('username',''), m.get('password_hash','')[:16]+'...', m.get('level',1), m.get('created_at',''))
-" 2>/dev/null
-    rm -f "$tmpf"
-}
-
-_random_password() {
-    tr -dc 'A-Za-z0-9!@#$%^&*' < /dev/urandom 2>/dev/null | head -c16 || printf 'sms2web%s' "$(date +%s)"
-}
-
-_yes_no() {
-    local msg="$1" def="${2:-yes}"
-    local prompt=""
-    [ "$def" = "yes" ] && prompt="[Y/n]" || prompt="[y/N]"
-    read -p "  [?] $msg $prompt: " ans
-    ans=$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')
-    [ -z "$ans" ] && ans="$def"
-    [ "$ans" = "yes" ] || [ "$ans" = "y" ] || [ "$ans" = "true" ] || [ "$ans" = "1" ]
-}
-
-_ssl_is_active() {
-    local proto
-    proto=$(_server_info_val protocol 2>/dev/null)
-    if [ -n "$proto" ]; then
-        echo "$proto"
-        return
-    fi
-    local enabled
-    enabled=$(_read_json "$CONFIG_FILE" "ssl_enabled")
-    if [ "$enabled" = "true" ] && [ -f "$DATA_DIR/ssl/server.crt" ] && [ -f "$DATA_DIR/ssl/server.key" ]; then
-        echo "https"
-    else
-        echo "http"
-    fi
-}
-
-# -- 缓存清理 --
-_clean_panel_cache() {
-    echo ""
-    info "清理面板缓存..."
-    # 日志文件
-    for f in "$SERVER_LOG" "$DAEMON_LOG"; do
-        if [ -f "$f" ]; then
-            local sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
-            : > "$f"
-            local sz_hr=""
-            [ "$sz" -ge 1048576 ] && sz_hr="$((sz/1048576))MB" || sz_hr="$((sz/1024))KB"
-            ok "已清空: $(basename $f) ($sz_hr)"
-        fi
-    done
-    # tmp 目录下 .pyc 缓存
-    local pyc_count=0
-    while IFS= read -r f; do
-        rm -f "$f" 2>/dev/null && pyc_count=$((pyc_count+1))
-    done < <(find "$STW_DIR" -name "*.pyc" -type f 2>/dev/null)
-    [ "$pyc_count" -gt 0 ] && ok "清理 $pyc_count 个 .pyc 缓存文件"
-    # __pycache__ 目录
-    local pc_count=0
-    while IFS= read -r d; do
-        rm -rf "$d" 2>/dev/null && pc_count=$((pc_count+1))
-    done < <(find "$STW_DIR" -type d -name "__pycache__" 2>/dev/null)
-    [ "$pc_count" -gt 0 ] && ok "清理 $pc_count 个 __pycache__ 目录"
-    # data 目录下 session 文件
-    local sess_count=0
-    while IFS= read -r f; do
-        if [ -f "$f" ]; then
-            rm -f "$f" 2>/dev/null && sess_count=$((sess_count+1))
-        fi
-    done < <(find "$DATA_DIR" -name "session_*" -type f 2>/dev/null)
-    [ "$sess_count" -gt 0 ] && ok "清理 $sess_count 个会话文件"
-    ok "面板缓存清理完成"
-}
-
-_get_port() {
-    local label="$1" port=""
-    _load_server_info
-    [ "$label" = "用户" ] && port=$(_server_info_val user_port)
-    [ "$label" = "管理" ] && port=$(_server_info_val admin_port)
-    [ -z "$port" ] && [ "$label" = "用户" ] && port=$(_read_json "$CONFIG_FILE" "force_user_port")
-    [ -z "$port" ] && [ "$label" = "管理" ] && port=$(_read_json "$CONFIG_FILE" "force_admin_port")
-    [ -z "$port" ] && port="19672"
-    echo "$port"
-}
-
-_clean_system_cache() {
-    echo ""
-    warn "系统缓存清理 (仅清理安全目录，绝不删除系统文件)"
-    echo ""
-    local freed=0
-    # 检测包管理器缓存
-    if command -v apt-get >/dev/null 2>&1; then
-        local sz=$(du -sb /var/cache/apt 2>/dev/null | cut -f1)
-        apt-get clean 2>/dev/null && ok "APT 缓存已清理" || warn "APT 清理失败(需要root?)"
-        freed=$((freed + ${sz:-0}))
-    fi
-    if command -v dnf >/dev/null 2>&1; then
-        local sz=$(du -sb /var/cache/dnf 2>/dev/null | cut -f1)
-        dnf clean all 2>/dev/null && ok "DNF 缓存已清理" || warn "DNF 清理失败"
-        freed=$((freed + ${sz:-0}))
-    fi
-    if command -v yum >/dev/null 2>&1; then
-        local sz=$(du -sb /var/cache/yum 2>/dev/null | cut -f1)
-        yum clean all 2>/dev/null && ok "YUM 缓存已清理" || warn "YUM 清理失败"
-        freed=$((freed + ${sz:-0}))
-    fi
-    if command -v pacman >/dev/null 2>&1; then
-        pacman -Scc --noconfirm 2>/dev/null && ok "Pacman 缓存已清理" || warn "Pacman 清理失败"
-    fi
-    # 清理 /tmp 下应用临时文件（不删 /tmp 本身）
-    local tmp_count=0
-    while IFS= read -r f; do
-        rm -rf "$f" 2>/dev/null && tmp_count=$((tmp_count+1))
-    done < <(find /tmp -maxdepth 1 \( -name "tmp*" -o -name "*.tmp" -o -name "pip-*" -o -name "python*" \) 2>/dev/null | head -100)
-    [ "$tmp_count" -gt 0 ] && ok "清理 $tmp_count 个临时文件"
-    # 清理 journal 日志（仅保留最近 100M）
-    if command -v journalctl >/dev/null 2>&1; then
-        journalctl --vacuum-size=100M 2>/dev/null && ok "Systemd 日志已压缩" || true
-    fi
-    echo ""
-    ok "系统缓存清理完成"
-    warn "安全提示: 仅清理了包管理器和 /tmp 下的临时文件，未删除任何系统文件"
-}
-
-# -- 系统检测 --
-_detect_os() {
-    DISTRO_ID=""; DISTRO_VERSION=""; DISTRO_PRETTY=""
-    if [ -f "$OS_RELEASE" ]; then
-        . "$OS_RELEASE"
-        DISTRO_ID="$ID"; DISTRO_VERSION="$VERSION_ID"; DISTRO_PRETTY="$PRETTY_NAME"
-    fi
-    echo "  系统: ${DISTRO_PRETTY:-$(uname -s)} $(uname -m)"
-    echo "  Python: $($PYTHON --version 2>&1)"
-    echo "  安装目录: $STW_DIR"
-}
-
-# -- 服务控制 --
 _start() {
-    if [ -f "$PID_FILE" ]; then
-        local pid=$(cat "$PID_FILE" 2>/dev/null)
-        if kill -0 "$pid" 2>/dev/null; then
-            warn "面板已在运行 (PID $pid)"
-            return
-        fi
-    fi
+    [ -f "$PID_FILE" ] && { local pid=$(cat "$PID_FILE" 2>/dev/null); kill -0 "$pid" 2>/dev/null && { warn "Panel already running (PID $pid)"; return; }; }
     mkdir -p "$DATA_DIR" "$LOG_DIR"
     cd "$STW_DIR"
     DATA_DIR="$DATA_DIR" MOD_DIR="$MOD_DIR" nohup $PYTHON "$SERVER_PY" > "$SERVER_LOG" 2>&1 &
@@ -226,988 +44,85 @@ _start() {
     echo "$pid" > "$PID_FILE"
     sleep 3
     if kill -0 "$pid" 2>/dev/null; then
-        ok "面板已启动 (PID $pid)"
-        sleep 1
-        local dpid=""
-        [ -f "$DAEMON_PID_FILE" ] && dpid=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
-        if [ -n "$dpid" ] && kill -0 "$dpid" 2>/dev/null; then
-            ok "守护进程已启动 (PID $dpid)"
-        else
-            warn "守护进程可能未启动，检查日志: $DAEMON_LOG"
-        fi
+        ok "Panel started (PID $pid)"
+        local dpid=""; [ -f "$DAEMON_PID_FILE" ] && dpid=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
+        [ -n "$dpid" ] && kill -0 "$dpid" 2>/dev/null && ok "Daemon running (PID $dpid)" || warn "Daemon may not have started, check: $DAEMON_LOG"
     else
-        fail "面板启动失败，查看日志: $SERVER_LOG"
+        fail "Panel failed to start, check: $SERVER_LOG"
     fi
-}
-
-_start_daemon_only() {
-    local dpid=""
-    [ -f "$DAEMON_PID_FILE" ] && dpid=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
-    if [ -n "$dpid" ] && kill -0 "$dpid" 2>/dev/null; then
-        warn "守护进程已在运行 (PID $dpid)"
-        return
-    fi
-    mkdir -p "$DATA_DIR" "$LOG_DIR"
-    cd "$STW_DIR"
-    DATA_DIR="$DATA_DIR" nohup $PYTHON "$STW_DIR/server/daemon.py" > "$DAEMON_LOG" 2>&1 &
-    local dpid=$!
-    sleep 2
-    if kill -0 "$dpid" 2>/dev/null; then
-        ok "守护进程已启动 (PID $dpid)"
-    else
-        fail "守护进程启动失败，查看日志: $DAEMON_LOG"
-    fi
-}
-
-_daemon_status() {
-    _load_server_info
-    local d_port=$(_server_info_val daemon_port)
-    local dpid=""
-    [ -f "$DAEMON_PID_FILE" ] && dpid=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
-    if [ -n "$dpid" ] && kill -0 "$dpid" 2>/dev/null; then
-        local duptime=$(ps -o etime= -p "$dpid" 2>/dev/null | xargs)
-        echo ""
-        echo "  [运行中] 守护进程 (Daemon)"
-        echo "  PID: $dpid"
-        echo "  运行时长: ${duptime:-未知}"
-        [ -n "$d_port" ] && echo "  通信端口: $d_port"
-        echo ""
-        tail -3 "$DAEMON_LOG" 2>/dev/null | sed 's/^/  /'
-    else
-        echo "  [未运行] 守护进程 (Daemon)"
-    fi
-}
-
-_stop_daemon_only() {
-    local dpid=""
-    [ -f "$DAEMON_PID_FILE" ] && dpid=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
-    if [ -n "$dpid" ] && kill -0 "$dpid" 2>/dev/null; then
-        kill "$dpid" 2>/dev/null && ok "守护进程已停止 (PID $dpid)" || true
-        rm -f "$DAEMON_PID_FILE"
-    fi
-    dpid=$(pgrep -f "daemon.py" 2>/dev/null | head -1)
-    [ -n "$dpid" ] && kill "$dpid" 2>/dev/null && ok "守护进程已强制停止" || true
 }
 
 _stop() {
     local pid
     if [ -f "$PID_FILE" ]; then
         pid=$(cat "$PID_FILE" 2>/dev/null)
-        kill "$pid" 2>/dev/null && ok "面板已停止 (PID $pid)" || warn "面板进程 $pid 不存在"
+        kill "$pid" 2>/dev/null && ok "Panel stopped (PID $pid)" || warn "Panel PID $pid not found"
         rm -f "$PID_FILE"
     else
         pid=$(pgrep -f "server.py" 2>/dev/null | head -1)
-        [ -n "$pid" ] && { kill "$pid" 2>/dev/null && ok "面板已停止"; } || warn "未找到运行中的面板"
+        [ -n "$pid" ] && { kill "$pid" 2>/dev/null && ok "Panel stopped"; } || warn "No running panel found"
     fi
-    _stop_daemon_only
+    local dpid=""; [ -f "$DAEMON_PID_FILE" ] && dpid=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
+    [ -n "$dpid" ] && kill "$dpid" 2>/dev/null && ok "Daemon stopped" || true
+    rm -f "$DAEMON_PID_FILE"
+    dpid=$(pgrep -f "daemon.py" 2>/dev/null | head -1)
+    [ -n "$dpid" ] && kill "$dpid" 2>/dev/null && ok "Daemon force stopped" || true
 }
 
 _status() {
     _load_server_info
-    local u_port=$(_server_info_val user_port)
-    local a_port=$(_server_info_val admin_port)
-    local d_port=$(_server_info_val daemon_port)
-    local proto=$(_server_info_val protocol)
-    local lip=$(_server_info_val lan_ip)
-    local pip=$(_server_info_val public_ip)
+    local u_port=$(_server_info_val user_port) a_port=$(_server_info_val admin_port)
+    local d_port=$(_server_info_val daemon_port) proto=$(_server_info_val protocol)
+    local lip=$(_server_info_val lan_ip) pip=$(_server_info_val public_ip)
     local uname=$(_server_info_val username)
-    local started=$(_server_info_val started_at)
-
-    local pid=""
-    [ -f "$PID_FILE" ] && pid=$(cat "$PID_FILE" 2>/dev/null)
+    echo ""
+    local pid=""; [ -f "$PID_FILE" ] && pid=$(cat "$PID_FILE" 2>/dev/null)
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-        local uptime=$(ps -o etime= -p "$pid" 2>/dev/null | xargs)
-        echo ""
-echo "  [运行中] 面板 (Panel)"
-        echo "  PID: $pid"
-        echo "  运行时长: ${uptime:-未知}"
+        echo "  ${GREEN}[Running]${RESET} Panel (PID $pid) $(ps -o etime= -p "$pid" 2>/dev/null | xargs)"
     else
-        echo "  [未运行] 面板 (Panel)"
+        echo "  ${RED}[Stopped]${RESET} Panel"
     fi
-
-    local dpid=""
-    [ -f "$DAEMON_PID_FILE" ] && dpid=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
+    local dpid=""; [ -f "$DAEMON_PID_FILE" ] && dpid=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
     if [ -n "$dpid" ] && kill -0 "$dpid" 2>/dev/null; then
-        local duptime=$(ps -o etime= -p "$dpid" 2>/dev/null | xargs)
-        echo "  [运行中] 守护进程 (Daemon)"
-        echo "  PID: $dpid"
-        echo "  运行时长: ${duptime:-未知}"
+        echo "  ${GREEN}[Running]${RESET} Daemon (PID $dpid) $(ps -o etime= -p "$dpid" 2>/dev/null | xargs)"
     else
-        echo "  [未运行] 守护进程 (Daemon)"
+        echo "  ${RED}[Stopped]${RESET} Daemon"
     fi
-
-    echo ""
     if [ -n "$u_port" ]; then
-        echo "  用户端:  ${proto:-http}://${lip:-?}:$u_port"
-        [ -n "$pip" ] && echo "  公网:    ${proto:-http}://$pip:$u_port"
-        echo "  管理台:  ${proto:-http}://${lip:-?}:$a_port/console.html"
-        [ -n "$pip" ] && echo "  公网:    ${proto:-http}://$pip:$a_port/console.html"
-        echo "  用户名:   $uname"
-        [ -n "$d_port" ] && echo "  守护进程: 端口 $d_port"
-    fi
-    echo "  安装目录: $STW_DIR"
-    echo "  数据目录: $DATA_DIR"
-    echo "  Mod 目录: $MOD_DIR"
-    echo ""
-    tail -5 "$SERVER_LOG" 2>/dev/null | sed 's/^/  /'
-}
-
-# -- 读取/修改配置 --
-_load_server_info() {
-    local f="$DATA_DIR/server_info.json"
-    if [ ! -f "$f" ]; then
-        SERVER_INFO=""
-        return
-    fi
-    SERVER_INFO=$($PYTHON -c "
-import json
-d=json.load(open('$f'))
-print(json.dumps(d))
-" 2>/dev/null || echo "")
-}
-
-_server_info_val() {
-    local key="$1"
-    [ -z "$SERVER_INFO" ] && { echo ""; return; }
-    $PYTHON -c "
-import json,sys
-d=json.loads(sys.argv[1])
-print(d.get('$key',''))
-" "$SERVER_INFO" 2>/dev/null || echo ""
-}
-
-_get_default_info() {
-    echo ""
-    echo "  短信转网页 — 默认信息"
-    echo ""
-    _detect_os
-    echo ""
-    _load_server_info
-    local u_port=$(_server_info_val user_port)
-    local a_port=$(_server_info_val admin_port)
-    local d_port=$(_server_info_val daemon_port)
-    local uname=$(_server_info_val username)
-    local proto=$(_server_info_val protocol)
-    local lip=$(_server_info_val lan_ip)
-    local pip=$(_server_info_val public_ip)
-    local status=$(_server_info_val status)
-    if [ -n "$u_port" ]; then
-        echo "  状态: $status"
         echo ""
-        echo "  用户端:  ${proto:-http}://${lip:-?}:$u_port"
-        [ -n "$pip" ] && echo "  公网:    ${proto:-http}://$pip:$u_port"
-        echo "  管理台:  ${proto:-http}://${lip:-?}:$a_port/console.html"
-        [ -n "$pip" ] && echo "  公网:    ${proto:-http}://$pip:$a_port/console.html"
-        echo "  用户名:   $uname"
-        [ -n "$d_port" ] && echo "  守护进程: 端口 $d_port"
-    else
-        warn "服务未运行，无法获取端口信息"
+        echo "  User:  ${proto:-http}://${lip:-?}:$u_port"
+        [ -n "$pip" ] && echo "  Pub:   ${proto:-http}://$pip:$u_port"
+        echo "  Admin: ${proto:-http}://${lip:-?}:$a_port/console.html"
+        [ -n "$pip" ] && echo "  Pub:   ${proto:-http}://$pip:$a_port/console.html"
+        echo "  Login: $uname"
+        [ -n "$d_port" ] && echo "  Daemon port: $d_port"
     fi
-    if [ -f "$MANAGERS" ]; then
+    echo "  Dir: $STW_DIR"
+    echo ""
+    tail -3 "$SERVER_LOG" 2>/dev/null | sed 's/^/  /'
+}
+
+case "${1:-}" in
+    start)   _start ;;
+    stop)    _stop ;;
+    restart) _stop; sleep 1; _start ;;
+    status)  _status ;;
+    help|--help|-h)
+        echo "Usage: stw <command>"
+        echo "Commands:"
+        echo "  start    Start panel server"
+        echo "  stop     Stop panel server"
+        echo "  restart  Restart panel server"
+        echo "  status   Show server status"
+        ;;
+    "")
+        _status
         echo ""
-        echo "  管理员用户:"
-        _get_managers | while read u h l t; do
-            echo "    用户名: $u  等级: $l  创建: $t"
-        done
-    fi
-    echo ""
-    echo "  数据目录: $DATA_DIR"
-    echo "  Mod目录: $MOD_DIR"
-    echo "  日志文件: $SERVER_LOG"
-    echo ""
-}
-
-# -- 查看全部配置 --
-_view_config() {
-    echo ""
-    echo "  当前配置"
-    echo "  ---------------------"
-    if [ -f "$CONFIG_FILE" ]; then
-        $PYTHON -c "
-import json
-d=json.load(open('$CONFIG_FILE'))
-for k,v in d.items():
-    print(f'  {k}: {v}')
-" 2>/dev/null || echo "  (空)"
-    else
-        echo "  (配置文件不存在)"
-    fi
-    echo ""
-    read -p "  按回车继续..."
-}
-
-# -- 编辑配置 --
-_edit_config() {
-    echo ""
-    echo "  编辑配置"
-    echo "  ---------------------"
-    read -p "  配置项名称: " key
-    read -p "  配置值: " val
-    [ -z "$key" ] && { fail "配置项不能为空"; return; }
-    _write_json "$CONFIG_FILE" "$key" "$val"
-    ok "已设置 $key = $val（重启后生效）"
-}
-
-# -- 重启模式 --
-_restart_mode() {
-    echo ""
-    local cur=$(_read_json "$CONFIG_FILE" "config_mode")
-    [ -z "$cur" ] && cur="manual"
-    echo "  当前模式: $cur"
-    echo "  ---------------------"
-    echo "  1) 手动模式 — 配置永不覆盖，保留用户设置"
-    echo "  2) 自动模式 — 每次重启根据当前系统自动生成配置"
-    echo ""
-    read -p "  选择 [1/2]: " ch
-    if [ "$ch" = "2" ]; then
-        _write_json "$CONFIG_FILE" "config_mode" "auto"
-        ok "切换为自动模式 (重启后生效)"
-    else
-        _write_json "$CONFIG_FILE" "config_mode" "manual"
-        ok "切换为手动模式 (配置保持不动)"
-    fi
-}
-
-# -- 主题配置 --
-_theme_config() {
-    echo ""
-    echo "  网页主题设置"
-    echo "  ---------------------"
-    local bg=$(_read_json "$CONFIG_FILE" "theme_bg")
-    local font=$(_read_json "$CONFIG_FILE" "theme_font")
-    local color=$(_read_json "$CONFIG_FILE" "theme_color")
-    local radius=$(_read_json "$CONFIG_FILE" "theme_radius")
-    local shadow=$(_read_json "$CONFIG_FILE" "theme_shadow")
-    local dark=$(_read_json "$CONFIG_FILE" "theme_dark")
-    local font_size=$(_read_json "$CONFIG_FILE" "theme_font_size")
-    local gradient=$(_read_json "$CONFIG_FILE" "theme_gradient")
-    local blur=$(_read_json "$CONFIG_FILE" "theme_blur")
-    local anim=$(_read_json "$CONFIG_FILE" "theme_animation")
-    local density=$(_read_json "$CONFIG_FILE" "theme_density")
-    local preset=$(_read_json "$CONFIG_FILE" "theme_preset")
-    echo "  当前:"
-    echo "    预设:      ${preset:-无}"
-    echo "    主色:      ${color:-默认}"
-    echo "    背景:      ${bg:-无}"
-    echo "    渐变:      ${gradient:-无}"
-    echo "    字体:      ${font:-默认}"
-    echo "    字号:      ${font_size:-默认}"
-    echo "    圆角:      ${radius:-默认}"
-    echo "    阴影:      ${shadow:-默认}"
-    echo "    模糊:      ${blur:-无}"
-    echo "    深色模式:  ${dark:-关}"
-    echo "    动画:      ${anim:-开}"
-    echo "    密度:      ${density:-标准}"
-    echo ""
-    echo "  1) 主色调 (hex)    2) 背景图片URL"
-    echo "  3) 渐变背景CSS     4) 字体名称(自填)"
-    echo "  5) 字号 (px)       6) 圆角 (px)"
-    echo "  7) 阴影 (CSS值)    8) 模糊 (px)"
-    echo "  9) 深色模式开/关  10) 动画开/关"
-    echo " 11) 布局密度       12) 应用预设主题"
-    echo " 13) 字体预设       14) 恢复全部默认"
-    echo ""
-    read -p "  选择 [1-14]: " ch
-    case "$ch" in
-        1) read -p "  主色 (hex, 如 #1890ff): " val; _write_json "$CONFIG_FILE" "theme_color" "$val"; ok "主色已设置" ;;
-        2) read -p "  背景图片URL: " val; _write_json "$CONFIG_FILE" "theme_bg" "$val"; _write_json "$CONFIG_FILE" "theme_gradient" ""; ok "背景已设置" ;;
-        3) read -p "  渐变CSS (如 linear-gradient(...)): " val; _write_json "$CONFIG_FILE" "theme_gradient" "$val"; _write_json "$CONFIG_FILE" "theme_bg" ""; ok "渐变已设置" ;;
-        4) read -p "  字体名称 (如 PingFang SC, Noto Sans SC): " val; _write_json "$CONFIG_FILE" "theme_font" "$val"; ok "字体已设置" ;;
-        5) read -p "  字号 (px, 如 16): " val; _write_json "$CONFIG_FILE" "theme_font_size" "${val}px"; ok "字号已设置" ;;
-        6) read -p "  圆角 (px, 0-20): " val; _write_json "$CONFIG_FILE" "theme_radius" "$val"; ok "圆角已设置" ;;
-        7) read -p "  阴影CSS (如 0 4px 12px rgba(0,0,0,0.1)): " val; _write_json "$CONFIG_FILE" "theme_shadow" "$val"; ok "阴影已设置" ;;
-        8) read -p "  模糊 (px, 0-20): " val; _write_json "$CONFIG_FILE" "theme_blur" "$val"; ok "模糊已设置" ;;
-        9)
-            if [ "$dark" = "true" ]; then
-                _write_json "$CONFIG_FILE" "theme_dark" "false"; ok "深色模式已关闭"
-            else
-                _write_json "$CONFIG_FILE" "theme_dark" "true"; ok "深色模式已开启"
-            fi
-            ;;
-        10)
-            if [ "$anim" = "false" ]; then
-                _write_json "$CONFIG_FILE" "theme_animation" "true"; ok "动画已开启"
-            else
-                _write_json "$CONFIG_FILE" "theme_animation" "false"; ok "动画已关闭"
-            fi
-            ;;
-        11)
-            echo "  1) 标准  2) 紧凑  3) 宽松"
-            read -p "  选择: " dch
-            case "$dch" in
-                2) _write_json "$CONFIG_FILE" "theme_density" "-4"; ok "紧凑模式" ;;
-                3) _write_json "$CONFIG_FILE" "theme_density" "4"; ok "宽松模式" ;;
-                *) _write_json "$CONFIG_FILE" "theme_density" "0"; ok "标准模式" ;;
-            esac
-            ;;
-        12)
-            echo "  预设主题:"
-            echo "    1) 默认蓝"
-            echo "    2) 翡翠绿 (#00b894)"
-            echo "    3) 日落橙 (#e17055)"
-            echo "    4) 紫色 (#6c5ce7)"
-            echo "    5) 暗夜黑 (深色)"
-            echo "    6) 樱花粉 (#fd79a8)"
-            echo "    7) 青 (#00cec9)"
-            read -p "  选择预设 [1-7]: " pch
-            case "$pch" in
-                1) _write_json "$CONFIG_FILE" "theme_color" "#1677ff"; _write_json "$CONFIG_FILE" "theme_dark" "false"; _write_json "$CONFIG_FILE" "theme_preset" "默认蓝"; ok "预设: 默认蓝" ;;
-                2) _write_json "$CONFIG_FILE" "theme_color" "#00b894"; _write_json "$CONFIG_FILE" "theme_dark" "false"; _write_json "$CONFIG_FILE" "theme_preset" "翡翠绿"; ok "预设: 翡翠绿" ;;
-                3) _write_json "$CONFIG_FILE" "theme_color" "#e17055"; _write_json "$CONFIG_FILE" "theme_dark" "false"; _write_json "$CONFIG_FILE" "theme_preset" "日落橙"; ok "预设: 日落橙" ;;
-                4) _write_json "$CONFIG_FILE" "theme_color" "#6c5ce7"; _write_json "$CONFIG_FILE" "theme_dark" "false"; _write_json "$CONFIG_FILE" "theme_preset" "紫色"; ok "预设: 紫色" ;;
-                5) _write_json "$CONFIG_FILE" "theme_color" "#0984e3"; _write_json "$CONFIG_FILE" "theme_dark" "true"; _write_json "$CONFIG_FILE" "theme_preset" "暗夜黑"; ok "预设: 暗夜黑" ;;
-                6) _write_json "$CONFIG_FILE" "theme_color" "#fd79a8"; _write_json "$CONFIG_FILE" "theme_dark" "false"; _write_json "$CONFIG_FILE" "theme_preset" "樱花粉"; ok "预设: 樱花粉" ;;
-                7) _write_json "$CONFIG_FILE" "theme_color" "#00cec9"; _write_json "$CONFIG_FILE" "theme_dark" "false"; _write_json "$CONFIG_FILE" "theme_preset" "青"; ok "预设: 青" ;;
-                *) fail "无效" ;;
-            esac
-            ;;
-        13)
-            echo "  字体预设 (覆盖95%+系统):"
-            echo "    1) 系统默认 (无衬线+中文回退)"
-            echo "    2) 中文精选 (PingFang SC / Microsoft YaHei / Noto Sans SC)"
-            echo "    3) 英文优雅 (Georgia / Times New Roman)"
-            echo "    4) 等宽编程 (JetBrains Mono / Consolas / monospace)"
-            echo "    5) 极简无衬线 (Arial / Helvetica / sans-serif)"
-            echo "    6) 衬线经典 (Times New Roman / Songti SC / serif)"
-            echo "    7) 手写体 (STKaiti / KaiTi / cursive)"
-            read -p "  选择 [1-7]: " fch
-            case "$fch" in
-                1) v='-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' ;;
-                2) v='"PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Hiragino Sans GB", "WenQuanYi Micro Hei", sans-serif' ;;
-                3) v='Georgia, "Times New Roman", "Songti SC", serif' ;;
-                4) v='"JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace' ;;
-                5) v='Arial, Helvetica, "Nimbus Sans", sans-serif' ;;
-                6) v='"Times New Roman", "Songti SC", "Noto Serif SC", STSong, serif' ;;
-                7) v='"STKaiti", KaiTi, "Noto Serif SC", cursive' ;;
-                *) fail "无效" ;;
-            esac
-            if [ -n "$v" ]; then
-                _write_json "$CONFIG_FILE" "theme_font" "$v"; ok "字体预设已应用"
-            fi
-            ;;
-        14)
-            for k in theme_bg theme_font theme_color theme_radius theme_shadow theme_dark theme_font_size theme_gradient theme_blur theme_animation theme_density theme_preset; do
-                _write_json "$CONFIG_FILE" "$k" ""
-            done
-            ok "已恢复全部默认"
-            ;;
-        *) fail "无效选择" ;;
-    esac
-}
-
-# -- 重设端口（带自动/手动模式） --
-_reset_ports() {
-    echo ""
-    echo "  重置端口"
-    echo "  ---------------------"
-    echo "  1) 保留当前端口"
-    echo "  2) 重置为默认 (19672/19673)"
-    echo "  3) 随机分配"
-    echo ""
-    read -p "  选择: " ch
-    case "$ch" in
-        2) _write_json "$CONFIG_FILE" "force_user_port" "19672"; _write_json "$CONFIG_FILE" "force_admin_port" "19673"; ok "端口已重置为 19672/19673" ;;
-        3) _write_json "$CONFIG_FILE" "force_user_port" "$(( RANDOM % 50000 + 1024 ))"; _write_json "$CONFIG_FILE" "force_admin_port" "$(( RANDOM % 50000 + 1024 ))"; ok "端口已随机分配" ;;
-        *) info "保持不变" ;;
-    esac
-}
-
-# -- 添加管理员 --
-_add_admin() {
-    echo ""
-    echo "  添加超级管理员"
-    echo "  ---------------------"
-    read -p "  用户名: " uname
-    [ -z "$uname" ] && { fail "用户名不能为空"; return; }
-    read -s -p "  密码 (回车随机): " pwd1; echo ""
-    [ -z "$pwd1" ] && pwd1=$(_random_password) && echo "  随机密码: $pwd1"
-    [ ${#pwd1} -lt 8 ] && { fail "密码至少8位"; return; }
-    local tmpf=$(mktemp /tmp/stw_add.XXXXXX 2>/dev/null) || tmpf="/tmp/stw_add.$$"
-    printf '%s\n' "$uname" > "$tmpf"
-    printf '%s' "$pwd1" >> "$tmpf"
-    $PYTHON -c "
-import hashlib, secrets, json, os, time
-lines = open('$tmpf', 'r').read().split('\n')
-uname = lines[0]
-pwd = lines[1]
-salt = secrets.token_hex(16)
-h = hashlib.pbkdf2_hmac('sha256', pwd.encode(), salt.encode(), 600000).hex()
-managers = []
-if os.path.exists('$MANAGERS'):
-    managers = json.load(open('$MANAGERS'))
-managers.append({
-    'username': uname,
-    'password_hash': salt + ':' + h,
-    'level': 3,
-    'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
-    'created_by': 'stw'
-})
-os.makedirs('$(dirname "$MANAGERS")', exist_ok=True)
-json.dump(managers, open('$MANAGERS', 'w'), ensure_ascii=False, indent=2)
-os.chmod('$MANAGERS', 0o600)
-print('ok')
-" 2>/dev/null | grep -q ok && ok "超级管理员 $uname 已添加" || fail "添加失败"
-    rm -f "$tmpf"
-}
-
-# -- 删除管理员 --
-_del_admin() {
-    echo ""
-    echo "  删除管理员"
-    echo "  ---------------------"
-    $PYTHON -c "
-import json
-d=json.load(open('$MANAGERS'))
-for i,m in enumerate(d):
-    print(f'  [{i}] {m[\"username\"]} (level {m[\"level\"]})')
-" 2>/dev/null || { warn "无管理员"; return; }
-    echo ""
-    read -p "  输入要删除的编号: " idx
-    local tmpf=$(mktemp /tmp/stw_del.XXXXXX 2>/dev/null) || tmpf="/tmp/stw_del.$$"
-    printf '%s' "$idx" > "$tmpf"
-    $PYTHON -c "
-import json
-idx = int(open('$tmpf','r').read().strip())
-d=json.load(open('$MANAGERS'))
-if idx < len(d):
-    removed = d.pop(idx)
-    json.dump(d, open('$MANAGERS','w'), indent=2, ensure_ascii=False)
-    print(f'removed {removed[\"username\"]}')
-" 2>/dev/null | grep -q removed && ok "已删除" || fail "无效编号"
-    rm -f "$tmpf"
-}
-
-# -- 交互菜单 --
-_show_menu() {
-    clear 2>/dev/null || true
-    echo ""
-    echo "短信转网页 (SMS2Web) 管理工具"
-    echo ""
-    echo "  服务管理"
-    echo "  ------------------------------"
-    echo "   1. 重启服务                    2. 停止服务"
-    echo "   3. 启动服务                    4. 查看状态"
-    echo ""
-    echo "  端口与账户"
-    echo "  ------------------------------"
-    echo "   5. 修改用户端口                 6. 修改管理端口"
-    echo "   7. 修改管理员用户名              8. 修改管理员密码"
-    echo "   9. 重置端口                     10. 添加/删除管理员"
-    echo ""
-    echo "  配置管理"
-    echo "  ------------------------------"
-    echo "  11. 查看默认信息                12. 查看全部配置"
-    echo "  13. 编辑配置项                  14. 重启模式切换"
-    echo "  15. 网页主题设置                "
-    echo ""
-    echo "  安全设置"
-    echo "  ------------------------------"
-    echo "  16. 清除登录限制                17. 安全入口（开/关/查看）"
-    echo "  18. 设置IP白名单                19. 取消IP白名单"
-    echo "  20. 绑定域名                    21. 解除域名绑定"
-    echo ""
-    echo "  日志与维护"
-    echo "  ------------------------------"
-    echo "  22. 查看运行日志                23. 查看错误日志"
-    echo "  24. 清除日志                    25. 备份数据"
-    echo "  26. 恢复数据                    27. 磁盘清理"
-    echo ""
-    echo "  系统设置"
-    echo "  ------------------------------"
-    echo "  28. 设置语言                    29. 系统信息"
-    echo "  30. 开放防火墙端口              31. 配置SMTP邮件"
-    echo "  32. 查看用户列表                33. 重置所有设置"
-    echo "  34. 更新服务                    35. 开启/关闭注册"
-    echo "  36. 每日短信限额                37. 开启/关闭SSL"
-    echo "  38. 修复服务                    39. 关于"
-    echo ""
-    echo "  守护进程管理"
-    echo "  ------------------------------"
-    echo "  40. 守护进程状态                41. 启动守护进程"
-    echo "  42. 停止守护进程"
-    echo ""
-    echo "  系统维护"
-    echo "  ------------------------------"
-    echo "  43. 清理缓存（面板+系统）"
-    echo ""
-    echo "  快捷"
-    echo "  ------------------------------"
-    echo "   0. 退出"
-    echo ""
-    echo -n "  请输入编号 [0-43]: "
-}
-
-# -- 主逻辑 --
-_main() {
-    local cmd="${1:-}"
-    case "$cmd" in
-        1|restart)
-            _stop; sleep 1; _start ;;
-        2|stop)
-            _stop ;;
-        3|start)
-            _start ;;
-        4|status)
-            _status ;;
-        5|user-port)
-            echo ""
-            echo "  修改用户端口"
-            echo "  -----------------"
-            echo "  1) 随机生成"
-            echo "  2) 自定义端口"
-            read -p "  请选择 [1/2]: " ch
-            if [ "$ch" = "2" ]; then
-                read -p "  输入端口 (1-65535): " port
-                [[ "$port" != [0-9]* || "$port" -lt 1 || "$port" -gt 65535 ]] && { fail "端口必须是 1-65535 的数字"; return; }
-            else
-                port=$(( RANDOM % 50000 + 1024 ))
-                echo "  随机端口: $port"
-            fi
-            _write_json "$CONFIG_FILE" "force_user_port" "$port"
-            ok "已配置用户端口: $port（重启后生效）"
-            ;;
-        6|admin-port)
-            echo ""
-            echo "  修改管理端口"
-            read -p "  1) 随机  2) 自定义: " ch
-            if [ "$ch" = "2" ]; then
-                read -p "  输入端口 (1-65535): " port
-                [[ "$port" != [0-9]* || "$port" -lt 1 || "$port" -gt 65535 ]] && { fail "端口必须是 1-65535 的数字"; return; }
-            else
-                port=$(( RANDOM % 50000 + 1024 ))
-                echo "  随机端口: $port"
-            fi
-            _write_json "$CONFIG_FILE" "force_admin_port" "$port"
-            ok "已配置管理端口: $port（重启后生效）"
-            ;;
-        7|username)
-            echo ""
-            read -p "  输入新管理员用户名: " uname
-            [ -z "$uname" ] && { fail "用户名不能为空"; return; }
-            local tmpf=$(mktemp /tmp/stw_usr.XXXXXX 2>/dev/null) || tmpf="/tmp/stw_usr.$$"
-            printf '%s' "$uname" > "$tmpf"
-            $PYTHON -c "
-import json
-uname = open('$tmpf', 'r').read()
-with open('$MANAGERS') as f:
-    m = json.load(f)
-if not m:
-    print('ERROR: 无管理员可修改')
-    exit(1)
-m[0]['username'] = uname
-with open('$MANAGERS', 'w') as f:
-    json.dump(m, f, ensure_ascii=False, indent=2)
-print('OK')
-" 2>/dev/null && ok "管理员用户名已修改（立即生效）" || fail "修改失败，请检查 $MANAGERS"
-            rm -f "$tmpf"
-            ;;
-        8|password)
-            echo ""
-            read -s -p "  输入新管理员密码: " pwd1; echo ""
-            read -s -p "  再次输入确认: " pwd2; echo ""
-            [ "$pwd1" != "$pwd2" ] && { fail "两次密码不一致"; return; }
-            [ ${#pwd1} -lt 8 ] && { fail "密码至少8位"; return; }
-            local tmpf=$(mktemp /tmp/stw_pass.XXXXXX 2>/dev/null) || tmpf="/tmp/stw_pass.$$"
-            printf '%s' "$pwd1" > "$tmpf"
-            $PYTHON -c "
-import hashlib, secrets, json, os
-pwd = open('$tmpf', 'r').read()
-salt = secrets.token_hex(16)
-h = hashlib.pbkdf2_hmac('sha256', pwd.encode(), salt.encode(), 600000).hex()
-path = '$MANAGERS'
-with open(path) as f:
-    m = json.load(f)
-if not m:
-    print('ERROR: 无管理员可修改')
-    exit(1)
-m[0]['password_hash'] = salt + ':' + h
-with open(path, 'w') as f:
-    json.dump(m, f, ensure_ascii=False, indent=2)
-os.chmod(path, 0o600)
-print('OK')
-" 2>/dev/null && ok "管理员密码已修改（立即生效）" || fail "修改失败，请检查 $MANAGERS"
-            rm -f "$tmpf"
-            ;;
-        9|reset-ports)
-            _reset_ports ;;
-        10|admin-users)
-            echo ""
-            echo "  管理员管理"
-            echo "  -----------------"
-            echo "  1) 添加超级管理员"
-            echo "  2) 删除管理员"
-            read -p "  选择: " ch
-            case "$ch" in 1) _add_admin ;; 2) _del_admin ;; *) fail "无效" ;; esac
-            ;;
-        11|info)
-            _get_default_info
-            ;;
-        12|view-config)
-            _view_config ;;
-        13|edit-config)
-            _edit_config ;;
-        14|restart-mode)
-            _restart_mode ;;
-        15|theme)
-            _theme_config ;;
-        16|clear-login-limit)
-            rm -f "$DATA_DIR/login_limits" "$DATA_DIR"/*.login 2>/dev/null
-            ok "登录限制已清除"
-            ;;
-        17|security-path|set-security-path|unset-security-path|view-security-path)
-            echo ""
-            local cur_path
-            cur_path=$($PYTHON -c "
-import json
-with open('$CONFIG_FILE') as f:
-    cfg = json.load(f)
-print(cfg.get('security_path', '') or '')
-" 2>/dev/null || echo "")
-            if [ -n "$cur_path" ]; then
-                echo "  当前安全入口: $cur_path（已开启）"
-                local a_port=$(_get_port "管理")
-                local proto; proto=$(_ssl_is_active)
-                local lan_ip
-                lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}' | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1 || echo "")
-                local pub_ip
-                pub_ip=$(curl -fsL --connect-timeout 3 ifconfig.me 2>/dev/null || wget -qO- --timeout=3 ifconfig.me 2>/dev/null || echo "")
-                echo "  管理后台:"
-                [ -n "$lan_ip" ] && echo "    内网: ${proto}://${lan_ip}:${a_port}${cur_path}/console.html"
-                [ -n "$pub_ip" ] && echo "    公网: ${proto}://${pub_ip}:${a_port}${cur_path}/console.html"
-                echo ""
-                if _yes_no "是否关闭安全入口?" "no"; then
-                    _write_json "$CONFIG_FILE" "security_path" "\"\""
-                    ok "安全入口已关闭"
-                else
-                    info "已取消"
-                fi
-            else
-                echo "  当前安全入口: 未设置"
-                echo "  安全入口开启后，管理后台只能通过专用路径访问"
-                read -p "  输入安全入口路径（回车自动生成6位随机）: " path
-                if [ -z "$path" ]; then
-                    path="/$(tr -dc 'A-Za-z0-9' < /dev/urandom 2>/dev/null | head -c6 || echo 'Xy7k9m')"
-                    echo "  自动生成: $path"
-                fi
-                [[ "$path" != /* ]] && path="/$path"
-                _write_json "$CONFIG_FILE" "security_path" "\"$path\""
-                ok "安全入口已设置: $path（重启后生效）"
-            fi
-            ;;
-        18|whitelist)
-            read -p "  输入允许的IP（多个用逗号分隔）: " ips
-            _write_json "$CONFIG_FILE" "ip_whitelist" "\"$ips\""
-            ok "IP白名单已设置"
-            ;;
-        19|unwhitelist)
-            _write_json "$CONFIG_FILE" "ip_whitelist" "\"\""
-            ok "IP白名单已清除"
-            ;;
-        20|domain)
-            read -p "  输入域名 (用户端): " domain
-            _write_json "$CONFIG_FILE" "user_domain" "\"$domain\""
-            ok "用户端域名已设置"
-            read -p "  是否同时设置管理端域名? (y/n): " yn
-            if [ "$yn" = "y" ] || [ "$yn" = "yes" ]; then
-                read -p "  输入管理端域名: " adm_domain
-                _write_json "$CONFIG_FILE" "admin_domain" "\"$adm_domain\""
-                ok "管理端域名已设置"
-            fi
-            ;;
-        21|undomain)
-            _write_json "$CONFIG_FILE" "user_domain" "\"\""
-            _write_json "$CONFIG_FILE" "admin_domain" "\"\""
-            ok "域名绑定已清除"
-            ;;
-        22|view-log)
-            echo ""
-            if [ -f "$SERVER_LOG" ]; then
-                less "$SERVER_LOG" 2>/dev/null || tail -50 "$SERVER_LOG"
-            else
-                warn "日志文件不存在"
-            fi
-            ;;
-        23|error-log)
-            echo ""
-            if [ -f "$SERVER_LOG" ]; then
-                grep -i "error\|fail\|exception\|traceback" "$SERVER_LOG" | tail -30 || echo "  无错误记录"
-            else
-                warn "日志文件不存在"
-            fi
-            ;;
-        24|clean-log)
-            : > "$SERVER_LOG" 2>/dev/null
-            find "$LOG_DIR" -name "*.log" -size +10M -exec truncate -s 0 {} \; 2>/dev/null || true
-            ok "日志已清空"
-            ;;
-        25|backup)
-            local bak_dir="$STW_DIR/tmp/backup"
-            mkdir -p "$bak_dir"
-            local bak_file="$bak_dir/sms2web-backup-$(date +%Y%m%d_%H%M%S).tar.gz"
-            tar czf "$bak_file" -C "$STW_DIR" tmp/data mod 2>/dev/null && ok "备份完成: $bak_file" || fail "备份失败"
-            ;;
-        26|restore)
-            local bak_dir="$STW_DIR/tmp/backup"
-            echo ""
-            echo "  可用备份:"
-            ls -1 "$bak_dir"/*.tar.gz 2>/dev/null || { warn "无备份文件"; return; }
-            read -p "  输入备份文件名: " bak
-            [ ! -f "$bak_dir/$bak" ] && { fail "文件不存在"; return; }
-            _stop 2>/dev/null
-            tar xzf "$bak_dir/$bak" -C "$STW_DIR" 2>/dev/null && ok "恢复成功" || fail "恢复失败"
-            _start
-            ;;
-        27|disk-clean)
-            echo ""
-            info "扫描可清理文件..."
-            local before=$(df "$STW_DIR" | awk 'NR==2{print $4}')
-            find "$STW_DIR/tmp" -name "*.log" -size +1M -exec sh -c 'truncate -s 0 "$1"' _ {} \; 2>/dev/null
-            find "$STW_DIR" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-            find "$STW_DIR" -name "*.pyc" -delete 2>/dev/null || true
-            local after=$(df "$STW_DIR" | awk 'NR==2{print $4}')
-            ok "清理完成"
-            ;;
-        28|lang)
-            echo ""
-            echo "  1) 简体中文"
-            echo "  2) 繁體中文"
-            echo "  3) English"
-            read -p "  选择语言: " ch
-            case "$ch" in
-                2) _write_json "$CONFIG_FILE" "language" "\"zh-tw\""; ok "語言已切換為 繁體中文" ;;
-                3) _write_json "$CONFIG_FILE" "language" "\"en\""; ok "Language switched to English" ;;
-                *) _write_json "$CONFIG_FILE" "language" "\"zh\""; ok "语言已切换为 简体中文" ;;
-            esac
-            ;;
-        29|sysinfo)
-            echo ""
-            _detect_os
-            echo "  内存: $(free -h 2>/dev/null | awk '/^Mem:/{print $2}')"
-            echo "  磁盘: $(df -h "$STW_DIR" 2>/dev/null | awk 'NR==2{print $3 "/" $2 " (" $5 ")"}')"
-            echo "  运行时间: $(uptime -p 2>/dev/null || uptime)"
-            _status
-            ;;
-        30|firewall)
-            echo ""
-            info "检测已开放端口..."
-            local u_port=$(_get_port "用户")
-            local a_port=$(_get_port "管理")
-            if command -v ufw >/dev/null 2>&1; then
-                for p in $u_port $a_port; do
-                    [ -n "$p" ] && { ufw allow "$p/tcp" 2>/dev/null && ok "ufw 已放行端口 $p" || warn "ufw 放行失败"; }
-                done
-            elif command -v firewall-cmd >/dev/null 2>&1; then
-                for p in $u_port $a_port; do
-                    [ -n "$p" ] && { firewall-cmd --permanent --add-port="$p/tcp" 2>/dev/null && firewall-cmd --reload 2>/dev/null && ok "firewalld 已放行端口 $p"; }
-                done
-            elif command -v iptables >/dev/null 2>&1; then
-                for p in $u_port $a_port; do
-                    [ -n "$p" ] && { iptables -A INPUT -p tcp --dport "$p" -j ACCEPT 2>/dev/null && ok "iptables 已放行端口 $p"; }
-                done
-            else
-                warn "未检测到防火墙工具，请手动放行端口: $u_port $a_port"
-            fi
-            ;;
-        31|mail)
-            echo ""
-            echo "  配置 SMTP 邮件"
-            read -p "  SMTP服务器: " host
-            read -p "  端口: " port
-            read -p "  邮箱账号: " user
-            read -s -p "  密码/授权码: " pass; echo ""
-            read -p "  发件人地址: " from
-            cat > "$DATA_DIR/mail_config.json" <<EOF
-{
-  "host": "$host",
-  "port": ${port:-465},
-  "user": "$user",
-  "password": "$pass",
-  "from_addr": "$from",
-  "from_name": "短信转网页",
-  "tls": true,
-  "enabled": true
-}
-EOF
-            ok "邮件配置已保存"
-            ;;
-        32|users)
-            echo ""
-            if [ ! -f "$DATA_DIR/sms.db" ]; then
-                warn "数据库不存在，请先启动服务"
-                return
-            fi
-            $PYTHON -c "
-import sqlite3
-try:
-    db=sqlite3.connect('$DATA_DIR/sms.db')
-    db.row_factory=sqlite3.Row
-    rows=db.execute('SELECT id,phone,email,is_active,registered_at FROM users ORDER BY id').fetchall()
-    if not rows: print('  (暂无用户)')
-    for r in rows:
-        print(f'  ID:{r[\"id\"]} | 手机:{r[\"phone\"]} | 邮箱:{r[\"email\"] or \"-\"} | 状态:{\"活跃\" if r[\"is_active\"] else \"禁用\"} | 注册:{r[\"registered_at\"]}')
-except Exception as e:
-    print(f'  读取失败: {e}')
-" 2>/dev/null
-            ;;
-        33|reset)
-            echo ""
-            warn "此操作将重置所有设置（数据将被清空）"
-            _yes_no "确定要继续吗?" "no" || { info "已取消"; return; }
-            _stop 2>/dev/null
-            rm -f "$MANAGERS" "$CONFIG_FILE" "$DATA_DIR"/sms.db 2>/dev/null
-            ok "已重置所有设置"
-            ;;
-        34|update)
-            echo ""
-            info "检查更新..."
-            info "当前版本: 1.0"
-            echo "  请访问 https://github.com/Li-Zhangye/stw/releases 下载最新版本"
-            ;;
-        35|register)
-            local cur=$(_read_json "$CONFIG_FILE" "registration_enabled")
-            [ -z "$cur" ] && cur="true"
-            if [ "$cur" = "true" ]; then
-                _write_json "$CONFIG_FILE" "registration_enabled" "false"
-                ok "注册功能已关闭"
-            else
-                _write_json "$CONFIG_FILE" "registration_enabled" "true"
-                ok "注册功能已开启"
-            fi
-            ;;
-        36|sms-limit)
-            read -p "  每个用户每日短信上限 (0=无限制): " limit
-            [[ "$limit" != [0-9]* ]] && { fail "请输入数字"; return; }
-            _write_json "$CONFIG_FILE" "daily_sms_limit" "${limit:-0}"
-            ok "每日短信限额已设置: ${limit:-无限制}"
-            ;;
-        37|ssl)
-            echo ""
-            echo "  1) 开启SSL (自签名)"
-            echo "  2) 关闭SSL"
-            read -p "  选择: " ch
-            if [ "$ch" = "1" ]; then
-                if command -v openssl >/dev/null 2>&1; then
-                    _write_json "$CONFIG_FILE" "ssl_enabled" "true"
-                    ok "SSL 已开启（重启后生效）"
-                else
-                    fail "openssl 未安装，无法开启 SSL"
-                fi
-            else
-                _write_json "$CONFIG_FILE" "ssl_enabled" "false"
-                ok "SSL 已关闭"
-            fi
-            ;;
-        38|fix)
-            echo ""
-            info "修复服务..."
-            _stop 2>/dev/null
-            rm -f "$PID_FILE"
-            for f in server/server.py server/check_env.py server/db.py server/mail.py; do
-                [ -f "$STW_DIR/$f" ] && ok "存在: $f" || fail "缺失: $f"
-            done
-            for d in tmp/data mod/public mod/server mod/plugins; do
-                mkdir -p "$STW_DIR/$d" 2>/dev/null
-            done
-            if [ -f "$STW_DIR/server/check_env.py" ]; then
-                DATA_DIR="$DATA_DIR" $PYTHON "$STW_DIR/server/check_env.py" --quick 2>/dev/null || true
-            fi
-            _start
-            ok "修复完成"
-            ;;
-        39|about)
-            echo ""
-            echo "  短信转网页 SMS2Web v1.0"
-            echo "  将短信转发到网页，支持多用户 + Mod 扩展系统"
-            echo ""
-            echo "  命令: stw [选项编号]"
-            echo "  示例: stw 1    重启服务"
-            echo "  示例: stw 11   查看信息"
-            echo ""
-            ;;
-        40|daemon-status)
-            _daemon_status ;;
-        41|daemon-start)
-            _start_daemon_only ;;
-        42|daemon-stop)
-            _stop_daemon_only ;;
-        43|clean-cache)
-            echo ""
-            info "缓存扫描中..."
-            local has_log=0; local has_pyc=0; local has_sess=0
-            [ -f "$SERVER_LOG" ] || [ -f "$DAEMON_LOG" ] && has_log=1
-            find "$STW_DIR" -name "*.pyc" -o -type d -name "__pycache__" 2>/dev/null | head -1 >/dev/null && has_pyc=1
-            find "$DATA_DIR" -name "session_*" 2>/dev/null | head -1 >/dev/null && has_sess=1
-            local has_apt=0; local has_dnf=0; local has_yum=0; local has_pac=0; local has_journal=0
-            command -v apt-get >/dev/null && has_apt=1
-            command -v dnf >/dev/null && has_dnf=1
-            command -v yum >/dev/null && has_yum=1
-            command -v pacman >/dev/null && has_pac=1
-            command -v journalctl >/dev/null && has_journal=1
-            echo ""
-            echo "  可清理项:"
-            echo "    面板缓存: $([ "$has_log$has_pyc$has_sess" != "000" ] && echo '检测到' || echo '无')"
-            [ "$has_log" = "1" ] && echo "      - 运行日志文件"
-            [ "$has_pyc" = "1" ] && echo "      - Python 编译缓存（.pyc / __pycache__）"
-            [ "$has_sess" = "1" ] && echo "      - 登录会话文件"
-            echo "    系统缓存: $([ "$has_apt$has_dnf$has_yum$has_pac$has_journal" != "00000" ] && echo '检测到' || echo '无')"
-            [ "$has_apt" = "1" ] && echo "      - APT 包缓存"
-            [ "$has_dnf" = "1" ] && echo "      - DNF 包缓存"
-            [ "$has_yum" = "1" ] && echo "      - YUM 包缓存"
-            [ "$has_pac" = "1" ] && echo "      - Pacman 包缓存"
-            [ "$has_journal" = "1" ] && echo "      - Systemd 日志"
-            echo ""
-            echo "  请选择清理项:"
-            echo "    (1) 仅面板缓存"
-            echo "    (2) 仅系统缓存"
-            echo "    (3) 全部清理"
-            echo "    (0) 取消"
-            read -p "  请输入 [0-3]: " clean_choice
-            case "$clean_choice" in
-                1) _clean_panel_cache ;;
-                2) _clean_system_cache ;;
-                3) _clean_panel_cache; _clean_system_cache ;;
-                *) info "已取消" ;;
-            esac
-            ;;
-        menu|"")
-            while true; do
-                _show_menu
-                read -r input
-                [ -z "$input" ] && continue
-                echo ""
-                if [ "$input" = "0" ] || [ "$input" = "q" ] || [ "$input" = "exit" ]; then
-                    echo "  再见"; break
-                fi
-                _main "$input"
-                echo ""
-                read -p "  按回车继续..."
-            done
-            ;;
-        *)
-            echo ""
-            echo "  stw — 短信转网页命令行工具箱"
-            echo "  用法: stw [选项编号]    直接执行操作"
-            echo "        stw              进入交互菜单"
-            echo ""
-            echo "  选项:"
-            echo "    1) 重启服务       2) 停止服务       3) 启动服务"
-            echo "    4) 查看状态       5) 用户端口       6) 管理端口"
-            echo "    7) 用户名         8) 密码          9) 重置端口"
-            echo "   10) 管理员管理    11) 默认信息      12) 查看配置"
-            echo "   13) 编辑配置      14) 重启模式      15) 主题设置"
-            echo "   16) 清除登录限制  17) 安全入口      18) IP白名单"
-            echo "   19) 取消白名单    20) 绑定域名      21) 解除域名"
-            echo "   22) 运行日志      23) 错误日志      24) 清除日志"
-            echo "   25) 备份数据      26) 恢复数据      27) 磁盘清理"
-            echo "   28) 语言          29) 系统信息      30) 防火墙"
-            echo "   31) 邮件配置      32) 用户列表      33) 重置设置"
-            echo "   34) 更新          35) 注册开关      36) 短信限额"
-            echo "   37) SSL           38) 修复          39) 关于"
-            echo "   40) 守护状态      41) 启动守护      42) 停止守护"
-            echo "   43) 清理缓存      0) 退出"
-            ;;
-    esac
-}
-
-# -- 入口 --
-_main "$@"
+        echo "  Run 'stw help' for commands"
+        ;;
+    *)
+        fail "Unknown command: $1"
+        echo "Usage: stw start|stop|restart|status"
+        exit 1
+        ;;
+esac

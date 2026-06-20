@@ -604,7 +604,7 @@ $( [ -n "$local_ip" ] || [ -n "$public_ip" ] && echo "  管理后台:${security_
 $( [ -n "$local_ip" ] && echo "    内网: $(build_url "$local_ip" "$a_port" "${security_path}/console.html")" )
 $( [ -n "$public_ip" ] && echo "    公网: $(build_url "$public_ip" "$a_port" "${security_path}/console.html")" )
 ============================================
-  提示: 运行 stw 进入管理菜单
+   提示: stw status 查看状态 | stw start|stop|restart 管理服务
 ============================================
 EOF
 

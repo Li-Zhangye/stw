@@ -3361,6 +3361,115 @@ def handle_upload_font(req, data):
     except Exception as e:
         req._send_json({'success': False, 'message': f'字体上传失败: {e}'})
 
+@admin_api_route('POST', '/api/admin/manage/clean-panel-cache')
+def handle_manage_clean_panel_cache(req, data):
+    admin = data.get('_admin_session')
+    if not _require_level(admin, 2):
+        req._send_json({'success': False, 'message': _t('unauthorized')})
+        return
+    try:
+        logs = 0; pycs = 0; sessions = 0
+        for f in [f'{DATA_DIR}/../server.log', f'{DATA_DIR}/../daemon.log']:
+            if os.path.isfile(f):
+                open(f, 'w').close()
+                logs += 1
+        for root, dirs, files in os.walk(os.path.dirname(DATA_DIR)):
+            for f in files:
+                if f.endswith('.pyc'):
+                    os.remove(os.path.join(root, f)); pycs += 1
+            for d in dirs:
+                if d == '__pycache__':
+                    import shutil; shutil.rmtree(os.path.join(root, d), ignore_errors=True); pycs += 1
+        for f in os.listdir(DATA_DIR):
+            if f.startswith('session_'):
+                os.remove(os.path.join(DATA_DIR, f)); sessions += 1
+        req._send_json({'success': True, 'message': f'面板缓存已清理 (日志:{logs} pyc:{pycs} 会话:{sessions})'})
+    except Exception as e:
+        req._send_json({'success': False, 'message': f'清理失败: {e}'})
+
+@admin_api_route('POST', '/api/admin/manage/clean-system-cache')
+def handle_manage_clean_system_cache(req, data):
+    admin = data.get('_admin_session')
+    if not _require_level(admin, 2):
+        req._send_json({'success': False, 'message': _t('unauthorized')})
+        return
+    try:
+        results = []
+        for pkg, cmd in [('apt-get', 'apt-get clean'), ('dnf', 'dnf clean all'), ('yum', 'yum clean all'), ('pacman', 'pacman -Scc --noconfirm')]:
+            if subprocess.run(['which', pkg], capture_output=True).returncode == 0:
+                r = subprocess.run(cmd.split(), capture_output=True, timeout=30)
+                results.append(f'{pkg}:{"OK" if r.returncode==0 else "FAIL"}')
+        if subprocess.run(['which', 'journalctl'], capture_output=True).returncode == 0:
+            subprocess.run(['journalctl', '--vacuum-size=100M'], capture_output=True, timeout=30)
+            results.append('journal:OK')
+        req._send_json({'success': True, 'message': '系统缓存已清理: ' + ', '.join(results)})
+    except Exception as e:
+        req._send_json({'success': False, 'message': f'清理失败: {e}'})
+
+@admin_api_route('POST', '/api/admin/manage/config')
+def handle_manage_config(req, data):
+    admin = data.get('_admin_session')
+    if not _require_level(admin, 2):
+        req._send_json({'success': False, 'message': _t('unauthorized')})
+        return
+    config_path = os.path.join(DATA_DIR, 'config.json')
+    action = data.get('action', 'get')
+    if action == 'get':
+        cfg = _load_config()
+        req._send_json({'success': True, 'config': cfg})
+    elif action == 'set':
+        key = data.get('key', '')
+        val = data.get('value', '')
+        if not key:
+            req._send_json({'success': False, 'message': 'key required'})
+            return
+        try:
+            cfg = _load_config()
+            cfg[key] = val
+            with open(config_path, 'w') as f:
+                json.dump(cfg, f, indent=2, ensure_ascii=False)
+            req._send_json({'success': True, 'message': f'{key} 已设置'})
+        except Exception as e:
+            req._send_json({'success': False, 'message': f'写入失败: {e}'})
+    else:
+        req._send_json({'success': False, 'message': f'Unknown action: {action}'})
+
+@admin_api_route('POST', '/api/admin/manage/backup')
+def handle_manage_backup(req, data):
+    admin = data.get('_admin_session')
+    if not _require_level(admin, 2):
+        req._send_json({'success': False, 'message': _t('unauthorized')})
+        return
+    try:
+        import shutil
+        bak_dir = os.path.join(os.path.dirname(DATA_DIR), 'backup')
+        os.makedirs(bak_dir, exist_ok=True)
+        fname = f'sms2web-backup-{time.strftime("%Y%m%d_%H%M%S")}.tar.gz'
+        fpath = os.path.join(bak_dir, fname)
+        base = os.path.dirname(DATA_DIR)
+        archive = shutil.make_archive(fpath.replace('.tar.gz', ''), 'gztar', base, ['data', 'mod'])
+        if archive:
+            req._send_json({'success': True, 'file': fname, 'size': os.path.getsize(archive)})
+        else:
+            req._send_json({'success': False, 'message': '备份创建失败'})
+    except Exception as e:
+        req._send_json({'success': False, 'message': f'备份失败: {e}'})
+
+@admin_api_route('POST', '/api/admin/manage/backups')
+def handle_manage_backups(req, data):
+    admin = data.get('_admin_session')
+    if not _require_level(admin, 1):
+        req._send_json({'success': False, 'message': _t('unauthorized')})
+        return
+    bak_dir = os.path.join(os.path.dirname(DATA_DIR), 'backup')
+    files = []
+    if os.path.isdir(bak_dir):
+        for f in sorted(os.listdir(bak_dir), reverse=True):
+            if f.endswith('.tar.gz'):
+                fpath = os.path.join(bak_dir, f)
+                files.append({'name': f, 'size': os.path.getsize(fpath), 'mtime': os.path.getmtime(fpath)})
+    req._send_json({'success': True, 'files': files})
+
 # -- SSL --
 SSL_DIR = os.path.join(DATA_DIR, 'ssl')
 
