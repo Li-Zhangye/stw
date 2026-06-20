@@ -95,6 +95,22 @@ _yes_no() {
     [ "$ans" = "yes" ] || [ "$ans" = "y" ] || [ "$ans" = "true" ] || [ "$ans" = "1" ]
 }
 
+_ssl_is_active() {
+    local proto
+    proto=$(_server_info_val protocol 2>/dev/null)
+    if [ -n "$proto" ]; then
+        echo "$proto"
+        return
+    fi
+    local enabled
+    enabled=$(_read_json "$CONFIG_FILE" "ssl_enabled")
+    if [ "$enabled" = "true" ] && [ -f "$DATA_DIR/ssl/server.crt" ] && [ -f "$DATA_DIR/ssl/server.key" ]; then
+        echo "https"
+    else
+        echo "http"
+    fi
+}
+
 # -- 缓存清理 --
 _clean_panel_cache() {
     echo ""
@@ -686,40 +702,39 @@ _show_menu() {
     echo ""
     echo "  安全设置"
     echo "  ------------------------------"
-    echo "  16. 清除登录限制                17. 设置安全入口"
-    echo "  18. 关闭安全入口                19. 设置IP白名单"
-    echo "  20. 取消IP白名单                21. 绑定域名"
-    echo "  22. 解除域名绑定"
+    echo "  16. 清除登录限制                17. 安全入口（开/关/查看）"
+    echo "  18. 设置IP白名单                19. 取消IP白名单"
+    echo "  20. 绑定域名                    21. 解除域名绑定"
     echo ""
     echo "  日志与维护"
     echo "  ------------------------------"
-    echo "  23. 查看运行日志                24. 查看错误日志"
-    echo "  25. 清除日志                    26. 备份数据"
-    echo "  27. 恢复数据                    28. 磁盘清理"
+    echo "  22. 查看运行日志                23. 查看错误日志"
+    echo "  24. 清除日志                    25. 备份数据"
+    echo "  26. 恢复数据                    27. 磁盘清理"
     echo ""
     echo "  系统设置"
     echo "  ------------------------------"
-    echo "  29. 设置语言                    30. 系统信息"
-    echo "  31. 开放防火墙端口              32. 配置SMTP邮件"
-    echo "  33. 查看用户列表                34. 重置所有设置"
-    echo "  35. 更新服务                    36. 开启/关闭注册"
-    echo "  37. 每日短信限额                38. 开启/关闭SSL"
-    echo "  39. 修复服务                    40. 关于"
+    echo "  28. 设置语言                    29. 系统信息"
+    echo "  30. 开放防火墙端口              31. 配置SMTP邮件"
+    echo "  32. 查看用户列表                33. 重置所有设置"
+    echo "  34. 更新服务                    35. 开启/关闭注册"
+    echo "  36. 每日短信限额                37. 开启/关闭SSL"
+    echo "  38. 修复服务                    39. 关于"
     echo ""
     echo "  守护进程管理"
     echo "  ------------------------------"
-    echo "  41. 守护进程状态                42. 启动守护进程"
-    echo "  43. 停止守护进程"
+    echo "  40. 守护进程状态                41. 启动守护进程"
+    echo "  42. 停止守护进程"
     echo ""
     echo "  系统维护"
     echo "  ------------------------------"
-    echo "  44. 清理面板缓存                45. 清理系统缓存"
+    echo "  43. 清理缓存（面板+系统）"
     echo ""
     echo "  快捷"
     echo "  ------------------------------"
     echo "   0. 退出"
     echo ""
-    echo -n "  请输入编号 [0-45]: "
+    echo -n "  请输入编号 [0-43]: "
 }
 
 # -- 主逻辑 --
@@ -839,27 +854,56 @@ print('OK')
             rm -f "$DATA_DIR/login_limits" "$DATA_DIR"/*.login 2>/dev/null
             ok "登录限制已清除"
             ;;
-        17|set-security-path)
-            read -p "  输入安全入口路径（如 /admin123）: " path
-            [ -z "$path" ] && { fail "路径不能为空"; return; }
-            [[ "$path" != /* ]] && path="/$path"
-            _write_json "$CONFIG_FILE" "security_path" "\"$path\""
-            ok "安全入口已设置: $path（重启后生效）"
+        17|security-path|set-security-path|unset-security-path|view-security-path)
+            echo ""
+            local cur_path
+            cur_path=$($PYTHON -c "
+import json
+with open('$CONFIG_FILE') as f:
+    cfg = json.load(f)
+print(cfg.get('security_path', '') or '')
+" 2>/dev/null || echo "")
+            if [ -n "$cur_path" ]; then
+                echo "  当前安全入口: $cur_path（已开启）"
+                local a_port=$(_get_port "管理")
+                local proto; proto=$(_ssl_is_active)
+                local lan_ip
+                lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}' | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1 || echo "")
+                local pub_ip
+                pub_ip=$(curl -fsL --connect-timeout 3 ifconfig.me 2>/dev/null || wget -qO- --timeout=3 ifconfig.me 2>/dev/null || echo "")
+                echo "  管理后台:"
+                [ -n "$lan_ip" ] && echo "    内网: ${proto}://${lan_ip}:${a_port}${cur_path}/console.html"
+                [ -n "$pub_ip" ] && echo "    公网: ${proto}://${pub_ip}:${a_port}${cur_path}/console.html"
+                echo ""
+                if _yes_no "是否关闭安全入口?" "no"; then
+                    _write_json "$CONFIG_FILE" "security_path" "\"\""
+                    ok "安全入口已关闭"
+                else
+                    info "已取消"
+                fi
+            else
+                echo "  当前安全入口: 未设置"
+                echo "  安全入口开启后，管理后台只能通过专用路径访问"
+                read -p "  输入安全入口路径（回车自动生成6位随机）: " path
+                if [ -z "$path" ]; then
+                    path="/$(tr -dc 'A-Za-z0-9' < /dev/urandom 2>/dev/null | head -c6 || echo 'Xy7k9m')"
+                    echo "  自动生成: $path"
+                fi
+                [[ "$path" != /* ]] && path="/$path"
+                _write_json "$CONFIG_FILE" "security_path" "\"$path\""
+                ok "安全入口已设置: $path（重启后生效）"
+            fi
             ;;
-        18|unset-security-path)
-            _write_json "$CONFIG_FILE" "security_path" "\"\""
-            ok "安全入口已关闭"
-            ;;
-        19|whitelist)
+        18|whitelist)
             read -p "  输入允许的IP（多个用逗号分隔）: " ips
             _write_json "$CONFIG_FILE" "ip_whitelist" "\"$ips\""
             ok "IP白名单已设置"
             ;;
-        20|unwhitelist)
+        19|unwhitelist)
             _write_json "$CONFIG_FILE" "ip_whitelist" "\"\""
             ok "IP白名单已清除"
             ;;
-        21|domain)
+        20|domain)
             read -p "  输入域名 (用户端): " domain
             _write_json "$CONFIG_FILE" "user_domain" "\"$domain\""
             ok "用户端域名已设置"
@@ -870,12 +914,12 @@ print('OK')
                 ok "管理端域名已设置"
             fi
             ;;
-        22|undomain)
+        21|undomain)
             _write_json "$CONFIG_FILE" "user_domain" "\"\""
             _write_json "$CONFIG_FILE" "admin_domain" "\"\""
             ok "域名绑定已清除"
             ;;
-        23|view-log)
+        22|view-log)
             echo ""
             if [ -f "$SERVER_LOG" ]; then
                 less "$SERVER_LOG" 2>/dev/null || tail -50 "$SERVER_LOG"
@@ -883,7 +927,7 @@ print('OK')
                 warn "日志文件不存在"
             fi
             ;;
-        24|error-log)
+        23|error-log)
             echo ""
             if [ -f "$SERVER_LOG" ]; then
                 grep -i "error\|fail\|exception\|traceback" "$SERVER_LOG" | tail -30 || echo "  无错误记录"
@@ -891,18 +935,18 @@ print('OK')
                 warn "日志文件不存在"
             fi
             ;;
-        25|clean-log)
+        24|clean-log)
             : > "$SERVER_LOG" 2>/dev/null
             find "$LOG_DIR" -name "*.log" -size +10M -exec truncate -s 0 {} \; 2>/dev/null || true
             ok "日志已清空"
             ;;
-        26|backup)
+        25|backup)
             local bak_dir="$STW_DIR/tmp/backup"
             mkdir -p "$bak_dir"
             local bak_file="$bak_dir/sms2web-backup-$(date +%Y%m%d_%H%M%S).tar.gz"
             tar czf "$bak_file" -C "$STW_DIR" tmp/data mod 2>/dev/null && ok "备份完成: $bak_file" || fail "备份失败"
             ;;
-        27|restore)
+        26|restore)
             local bak_dir="$STW_DIR/tmp/backup"
             echo ""
             echo "  可用备份:"
@@ -913,7 +957,7 @@ print('OK')
             tar xzf "$bak_dir/$bak" -C "$STW_DIR" 2>/dev/null && ok "恢复成功" || fail "恢复失败"
             _start
             ;;
-        28|disk-clean)
+        27|disk-clean)
             echo ""
             info "扫描可清理文件..."
             local before=$(df "$STW_DIR" | awk 'NR==2{print $4}')
@@ -923,7 +967,7 @@ print('OK')
             local after=$(df "$STW_DIR" | awk 'NR==2{print $4}')
             ok "清理完成"
             ;;
-        29|lang)
+        28|lang)
             echo ""
             echo "  1) 简体中文"
             echo "  2) 繁體中文"
@@ -935,7 +979,7 @@ print('OK')
                 *) _write_json "$CONFIG_FILE" "language" "\"zh\""; ok "语言已切换为 简体中文" ;;
             esac
             ;;
-        30|sysinfo)
+        29|sysinfo)
             echo ""
             _detect_os
             echo "  内存: $(free -h 2>/dev/null | awk '/^Mem:/{print $2}')"
@@ -943,7 +987,7 @@ print('OK')
             echo "  运行时间: $(uptime -p 2>/dev/null || uptime)"
             _status
             ;;
-        31|firewall)
+        30|firewall)
             echo ""
             info "检测已开放端口..."
             local u_port=$(_get_port "用户")
@@ -964,7 +1008,7 @@ print('OK')
                 warn "未检测到防火墙工具，请手动放行端口: $u_port $a_port"
             fi
             ;;
-        32|mail)
+        31|mail)
             echo ""
             echo "  配置 SMTP 邮件"
             read -p "  SMTP服务器: " host
@@ -986,7 +1030,7 @@ print('OK')
 EOF
             ok "邮件配置已保存"
             ;;
-        33|users)
+        32|users)
             echo ""
             if [ ! -f "$DATA_DIR/sms.db" ]; then
                 warn "数据库不存在，请先启动服务"
@@ -1005,7 +1049,7 @@ except Exception as e:
     print(f'  读取失败: {e}')
 " 2>/dev/null
             ;;
-        34|reset)
+        33|reset)
             echo ""
             warn "此操作将重置所有设置（数据将被清空）"
             _yes_no "确定要继续吗?" "no" || { info "已取消"; return; }
@@ -1013,13 +1057,13 @@ except Exception as e:
             rm -f "$MANAGERS" "$CONFIG_FILE" "$DATA_DIR"/sms.db 2>/dev/null
             ok "已重置所有设置"
             ;;
-        35|update)
+        34|update)
             echo ""
             info "检查更新..."
             info "当前版本: 1.0"
             echo "  请访问 https://github.com/Li-Zhangye/stw/releases 下载最新版本"
             ;;
-        36|register)
+        35|register)
             local cur=$(_read_json "$CONFIG_FILE" "registration_enabled")
             [ -z "$cur" ] && cur="true"
             if [ "$cur" = "true" ]; then
@@ -1030,13 +1074,13 @@ except Exception as e:
                 ok "注册功能已开启"
             fi
             ;;
-        37|sms-limit)
+        36|sms-limit)
             read -p "  每个用户每日短信上限 (0=无限制): " limit
             [[ "$limit" != [0-9]* ]] && { fail "请输入数字"; return; }
             _write_json "$CONFIG_FILE" "daily_sms_limit" "${limit:-0}"
             ok "每日短信限额已设置: ${limit:-无限制}"
             ;;
-        38|ssl)
+        37|ssl)
             echo ""
             echo "  1) 开启SSL (自签名)"
             echo "  2) 关闭SSL"
@@ -1053,7 +1097,7 @@ except Exception as e:
                 ok "SSL 已关闭"
             fi
             ;;
-        39|fix)
+        38|fix)
             echo ""
             info "修复服务..."
             _stop 2>/dev/null
@@ -1070,7 +1114,7 @@ except Exception as e:
             _start
             ok "修复完成"
             ;;
-        40|about)
+        39|about)
             echo ""
             echo "  短信转网页 SMS2Web v1.0"
             echo "  将短信转发到网页，支持多用户 + Mod 扩展系统"
@@ -1080,16 +1124,51 @@ except Exception as e:
             echo "  示例: stw 11   查看信息"
             echo ""
             ;;
-        41|daemon-status)
+        40|daemon-status)
             _daemon_status ;;
-        42|daemon-start)
+        41|daemon-start)
             _start_daemon_only ;;
-        43|daemon-stop)
+        42|daemon-stop)
             _stop_daemon_only ;;
-        44|clean-panel-cache)
-            _clean_panel_cache ;;
-        45|clean-system-cache)
-            _clean_system_cache ;;
+        43|clean-cache)
+            echo ""
+            info "缓存扫描中..."
+            local has_log=0; local has_pyc=0; local has_sess=0
+            [ -f "$SERVER_LOG" ] || [ -f "$DAEMON_LOG" ] && has_log=1
+            find "$STW_DIR" -name "*.pyc" -o -type d -name "__pycache__" 2>/dev/null | head -1 >/dev/null && has_pyc=1
+            find "$DATA_DIR" -name "session_*" 2>/dev/null | head -1 >/dev/null && has_sess=1
+            local has_apt=0; local has_dnf=0; local has_yum=0; local has_pac=0; local has_journal=0
+            command -v apt-get >/dev/null && has_apt=1
+            command -v dnf >/dev/null && has_dnf=1
+            command -v yum >/dev/null && has_yum=1
+            command -v pacman >/dev/null && has_pac=1
+            command -v journalctl >/dev/null && has_journal=1
+            echo ""
+            echo "  可清理项:"
+            echo "    面板缓存: $([ "$has_log$has_pyc$has_sess" != "000" ] && echo '检测到' || echo '无')"
+            [ "$has_log" = "1" ] && echo "      - 运行日志文件"
+            [ "$has_pyc" = "1" ] && echo "      - Python 编译缓存（.pyc / __pycache__）"
+            [ "$has_sess" = "1" ] && echo "      - 登录会话文件"
+            echo "    系统缓存: $([ "$has_apt$has_dnf$has_yum$has_pac$has_journal" != "00000" ] && echo '检测到' || echo '无')"
+            [ "$has_apt" = "1" ] && echo "      - APT 包缓存"
+            [ "$has_dnf" = "1" ] && echo "      - DNF 包缓存"
+            [ "$has_yum" = "1" ] && echo "      - YUM 包缓存"
+            [ "$has_pac" = "1" ] && echo "      - Pacman 包缓存"
+            [ "$has_journal" = "1" ] && echo "      - Systemd 日志"
+            echo ""
+            echo "  请选择清理项:"
+            echo "    (1) 仅面板缓存"
+            echo "    (2) 仅系统缓存"
+            echo "    (3) 全部清理"
+            echo "    (0) 取消"
+            read -p "  请输入 [0-3]: " clean_choice
+            case "$clean_choice" in
+                1) _clean_panel_cache ;;
+                2) _clean_system_cache ;;
+                3) _clean_panel_cache; _clean_system_cache ;;
+                *) info "已取消" ;;
+            esac
+            ;;
         menu|"")
             while true; do
                 _show_menu
@@ -1116,17 +1195,16 @@ except Exception as e:
             echo "    7) 用户名         8) 密码          9) 重置端口"
             echo "   10) 管理员管理    11) 默认信息      12) 查看配置"
             echo "   13) 编辑配置      14) 重启模式      15) 主题设置"
-            echo "   16) 清除登录限制  17) 安全入口      18) 关闭安全入口"
-            echo "   19) IP白名单      20) 取消白名单    21) 绑定域名"
-            echo "   22) 解除域名      23) 运行日志      24) 错误日志"
-            echo "   25) 清除日志      26) 备份数据      27) 恢复数据"
-            echo "   28) 磁盘清理      29) 语言          30) 系统信息"
-            echo "   31) 防火墙        32) 邮件配置      33) 用户列表"
-            echo "   34) 重置设置      35) 更新          36) 注册开关"
-            echo "   37) 短信限额      38) SSL           39) 修复"
-            echo "   40) 关于          41) 守护状态      42) 启动守护"
-            echo "   43) 停止守护      44) 面板缓存      45) 系统缓存"
-            echo "    0) 退出"
+            echo "   16) 清除登录限制  17) 安全入口      18) IP白名单"
+            echo "   19) 取消白名单    20) 绑定域名      21) 解除域名"
+            echo "   22) 运行日志      23) 错误日志      24) 清除日志"
+            echo "   25) 备份数据      26) 恢复数据      27) 磁盘清理"
+            echo "   28) 语言          29) 系统信息      30) 防火墙"
+            echo "   31) 邮件配置      32) 用户列表      33) 重置设置"
+            echo "   34) 更新          35) 注册开关      36) 短信限额"
+            echo "   37) SSL           38) 修复          39) 关于"
+            echo "   40) 守护状态      41) 启动守护      42) 停止守护"
+            echo "   43) 清理缓存      0) 退出"
             ;;
     esac
 }

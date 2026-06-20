@@ -3,6 +3,7 @@ import sys
 import json
 import time
 import base64
+import string
 from io import BytesIO
 import http.server
 import urllib.request
@@ -1332,7 +1333,7 @@ class AdminHandler(BaseHandler):
             if not inner.startswith('/'):
                 inner = '/' + inner
             return True, inner
-        self._send_error(404, 'Not Found')
+        self._send_error(404, '安全入口已更新，请联系超级管理员获取新地址')
         return False, path
 
     def _handle_admin_api(self):
@@ -3445,6 +3446,35 @@ def _wrap_ssl(server, ctx):
         server.socket = ctx.wrap_socket(server.socket, server_side=True)
     return server
 
+def _rotate_security_path():
+    cfg_path = os.path.join(DATA_DIR, 'config.json')
+    try:
+        if os.path.exists(cfg_path):
+            with open(cfg_path) as f:
+                cfg = json.load(f)
+        else:
+            cfg = {}
+        new_path = '/' + ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(6))
+        cfg['security_path'] = new_path
+        with open(cfg_path, 'w') as f:
+            json.dump(cfg, f, indent=2)
+        proto = 'https' if SSL_ACTIVE else 'http'
+        lan_ip = get_lan_ip()
+        public_ip = get_public_ip()
+        log(f'[安全] 安全入口已轮换: {new_path}')
+        log(f'[安全] 管理后台:')
+        log(f'[安全]   内网: {proto}://{lan_ip}:{ADMIN_PORT}{new_path}/console.html')
+        if public_ip:
+            log(f'[安全]   公网: {proto}://{public_ip}:{ADMIN_PORT}{new_path}/console.html')
+        log('[安全] 旧入口已失效')
+    except Exception as e:
+        log(f'[安全] 安全入口轮换失败: {e}')
+
+def _security_path_rotator():
+    while True:
+        time.sleep(86400)
+        _rotate_security_path()
+
 def run_server():
     global USER_PORT, ADMIN_PORT, _admin_creds
 
@@ -3557,6 +3587,13 @@ def run_server():
     _start_daemon(exit_on_fail=True)
     health_thread = threading.Thread(target=_daemon_health_loop, daemon=True)
     health_thread.start()
+
+    cfg = _load_config()
+    if cfg.get('security_path'):
+        log(f'[安全] 安全入口已启用: {cfg["security_path"]}')
+        log('[安全] 每 24 小时自动轮换')
+        rotator = threading.Thread(target=_security_path_rotator, daemon=True)
+        rotator.start()
 
     try:
         ctx = _get_ssl_context()

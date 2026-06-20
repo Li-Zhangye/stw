@@ -476,13 +476,14 @@ fi
 
 if [ "$need_config" = "1" ]; then
     $PYTHON -c "
-import json,sys
+import json, sys, secrets, string
 d = {
   'force_user_port': int(sys.argv[1]),
   'force_admin_port': int(sys.argv[2]),
   'registration_enabled': True,
   'daily_sms_limit': 0,
-  'language': 'zh'
+  'language': 'zh',
+  'security_path': '/' + ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(6))
 }
 json.dump(d, open('tmp/data/config.json','w'), indent=2, ensure_ascii=False)
 " "$u_port" "$a_port"
@@ -544,15 +545,48 @@ fi
 proto="http"
 [ "$ssl_enabled" = "1" ] && proto="https"
 
-detect_ip() {
-    for cmd in "hostname -I" "ip addr show 2>/dev/null | grep 'inet ' | grep -v 127.0.0.1 | awk '{print \$2}' | cut -d/ -f1 | head -1" "curl -fsL --connect-timeout 3 ifconfig.me 2>/dev/null" "wget -qO- --timeout=3 ifconfig.me 2>/dev/null"; do
+detect_public_ip() {
+    for cmd in "curl -fsL --connect-timeout 5 ifconfig.me 2>/dev/null" "wget -qO- --timeout=5 ifconfig.me 2>/dev/null"; do
         local ip
-        ip=$(eval "$cmd" 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
+        ip=$(eval "$cmd" | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
         [ -n "$ip" ] && { echo "$ip"; return; }
     done
     echo ""
 }
-server_ip=$(detect_ip)
+detect_local_ip() {
+    for cmd in "hostname -I 2>/dev/null" "ip addr show 2>/dev/null | grep 'inet ' | grep -v 127.0.0.1 | awk '{print \$2}' | cut -d/ -f1 | head -1"; do
+        local ip
+        ip=$(eval "$cmd" | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
+        [ -n "$ip" ] && { echo "$ip"; return; }
+    done
+    echo ""
+}
+public_ip=$(detect_public_ip)
+local_ip=$(detect_local_ip)
+server_ip="${local_ip:-$public_ip}"
+
+# 尝试读取安全入口配置
+security_path=""
+if [ -f "$target_dir/$DATA_SUBDIR/config.json" ]; then
+    security_path=$($PYTHON -c "
+import json
+d = json.load(open('$target_dir/$DATA_SUBDIR/config.json'))
+print(d.get('security_path', '') or '')
+" 2>/dev/null || echo "")
+fi
+
+build_url() {
+    local ip="$1" port="$2" path="$3"
+    local url="${proto}://${ip}:${port}"
+    [ -n "$path" ] && url="${url}${path}"
+    echo "$url"
+}
+
+user_urls=""
+admin_urls=""
+[ -n "$local_ip" ] && user_urls="  内网: $(build_url "$local_ip" "$u_port" "/")" && admin_urls="  内网: $(build_url "$local_ip" "$a_port" "${security_path}/console.html")"
+[ -n "$public_ip" ] && user_urls="${user_urls}\n  公网: $(build_url "$public_ip" "$u_port" "/")" && admin_urls="${admin_urls}\n  公网: $(build_url "$public_ip" "$a_port" "${security_path}/console.html")"
+
 cat > "$target_dir/$DATA_SUBDIR/admin_credentials.txt" << EOF
 ============================================
   短信转网页 - 管理控制台账号信息
@@ -560,18 +594,25 @@ cat > "$target_dir/$DATA_SUBDIR/admin_credentials.txt" << EOF
   安装目录: $target_dir
   用户端口: $u_port
   管理端口: $a_port
-  $( [ -n "$server_ip" ] && echo " 服务器IP: $server_ip" )
   用户名:   $admin_user
   密  码:   $admin_pass
-============================================
-  $( [ -n "$server_ip" ] && echo "管理后台: ${proto}://${server_ip}:$a_port/console.html" || echo "管理后台: 端口 $a_port" )
-  $( [ -n "$server_ip" ] && echo "用户端:   ${proto}://${server_ip}:$u_port/" || echo "用户端:   端口 $u_port" )
+$( [ -n "$local_ip" ] || [ -n "$public_ip" ] && echo "--------------------------------------------" )
+$( [ -n "$local_ip" ] && echo "  用户端:" )
+$( [ -n "$local_ip" ] && echo "    内网: $(build_url "$local_ip" "$u_port" "/")" )
+$( [ -n "$public_ip" ] && echo "    公网: $(build_url "$public_ip" "$u_port" "/")" )
+$( [ -n "$local_ip" ] || [ -n "$public_ip" ] && echo "  管理后台:${security_path:+ (安全入口: $security_path)}" )
+$( [ -n "$local_ip" ] && echo "    内网: $(build_url "$local_ip" "$a_port" "${security_path}/console.html")" )
+$( [ -n "$public_ip" ] && echo "    公网: $(build_url "$public_ip" "$a_port" "${security_path}/console.html")" )
 ============================================
   提示: 运行 stw 进入管理菜单
 ============================================
 EOF
 
-# ----- 13. 注册 stw 命令 -----
+# ----- 13. 设置文件权限 -----
+chmod +x "$target_dir/stw" 2>/dev/null || true
+chmod -R +x "$target_dir/server" 2>/dev/null || true
+
+# ----- 14. 注册 stw 命令 -----
 if [ "$is_termux" = "1" ]; then
     mkdir -p "$PREFIX/bin" 2>/dev/null || true
     ln -sf "$target_dir/stw" "$PREFIX/bin/stw" 2>/dev/null || true
@@ -632,9 +673,18 @@ echo ""
 printf "%s安装完成%s\n" "$GREEN" "$RESET"
 echo ""
 echo "  安装目录: $target_dir"
-echo "  端口: 用户端 $u_port / 管理端 $a_port"
-echo "  用户名: $admin_user"
-echo "  密  码: $admin_pass"
+echo ""
+echo "  用户名:   $admin_user"
+echo "  密  码:   $admin_pass"
+echo ""
+echo "  ── 访问链接 ──"
+echo "  用户端:"
+[ -n "$local_ip" ] && echo "    内网: $(build_url "$local_ip" "$u_port" "/")"
+[ -n "$public_ip" ] && echo "    公网: $(build_url "$public_ip" "$u_port" "/")"
+echo ""
+echo "  管理后台:${security_path:+ (安全入口: $security_path)}"
+[ -n "$local_ip" ] && echo "    内网: $(build_url "$local_ip" "$a_port" "${security_path}/console.html")"
+[ -n "$public_ip" ] && echo "    公网: $(build_url "$public_ip" "$a_port" "${security_path}/console.html")"
 echo ""
 info "凭据已保存: $target_dir/$DATA_SUBDIR/admin_credentials.txt"
 echo ""
